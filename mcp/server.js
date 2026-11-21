@@ -23,6 +23,8 @@ const db = getFirestore();
 const userRef = db.collection("users").doc(PLANNER_UID);
 const todos = userRef.collection("todos");
 const events = userRef.collection("events");
+const lists = userRef.collection("lists");
+const listTypes = userRef.collection("listTypes");
 
 /* ---------- helpers (same formats as the website) ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -215,6 +217,87 @@ server.tool(
     if (only_date) await ref.update({ skip: FieldValue.arrayUnion(only_date), [`skipDeleted.${only_date}`]: at, updatedAt: FieldValue.serverTimestamp() });
     else await ref.update({ deletedAt: at, updatedAt: FieldValue.serverTimestamp() });
     return text(`Moved to trash: ${snap.data().title}${only_date ? ` on ${only_date}` : ""} (restorable from 🗑 垃圾箱 on the website).`);
+  }
+);
+
+/* ---------- side lists (movies, restaurants, gifts…) — same docs as the website's 📚 drawer ---------- */
+const BUILTIN_LISTS = [
+  { id: "movie", label: "电影", names: ["movie", "film", "电影", "影视", "电视剧", "剧"] },
+  { id: "book", label: "书", names: ["book", "书", "书籍", "读书"] },
+  { id: "restaurant", label: "餐厅", names: ["restaurant", "food", "餐厅", "美食", "饭店", "餐馆"] },
+  { id: "gift", label: "礼物", names: ["gift", "礼物"] },
+  { id: "city", label: "城市", names: ["city", "travel", "城市", "旅行"] },
+];
+async function allListKinds() {
+  const custom = (await listTypes.get()).docs.map((d) => ({ id: d.id, label: d.data().label, names: [d.data().label] }));
+  return [...BUILTIN_LISTS, ...custom];
+}
+async function resolveList(name, create) {
+  const kinds = await allListKinds();
+  const k = name.trim().toLowerCase();
+  const hit = kinds.find((t) => t.id === k || t.names.some((n) => n.toLowerCase() === k));
+  if (hit) return hit;
+  if (!create) throw new Error(`No list called "${name}". Existing lists: ${kinds.map((t) => t.label).join(", ")}`);
+  const id = uid();
+  const label = name.trim();
+  await listTypes.doc(id).set({ id, label, icon: "📌", updatedAt: FieldValue.serverTimestamp() });
+  return { id, label, names: [label] };
+}
+
+server.tool(
+  "add_list_item",
+  "Add an entry to one of the planner's side lists: 电影 movie, 书 book, 餐厅 restaurant (with city), 礼物 gift (person = who it was for / from, occasion), 城市 city visited, or a custom list by its name. Use when the user mentions watching/reading/eating at/gifting/visiting something they'd want remembered. Call list_list_items first if unsure whether it is already there.",
+  {
+    list: z.string().describe("List name or id, e.g. 电影 / movie / 餐厅 / 礼物 / 城市 / a custom list name"),
+    name: z.string().min(1).describe("Title: movie/book/restaurant/city name, or the gift itself"),
+    date: z.string().optional().describe("YYYY-MM-DD local date it happened"),
+    note: z.string().optional(),
+    city: z.string().optional().describe("restaurants: city"),
+    person: z.string().optional().describe("gifts: e.g. '送给小王' or '妈妈送的'"),
+    occasion: z.string().optional().describe("gifts: e.g. 生日 / 圣诞"),
+    create_list_if_missing: z.boolean().default(false).describe("Create a new custom list if `list` doesn't exist (only when the user asked for a new list)"),
+  },
+  async ({ list, name, date, note, city, person, occasion, create_list_if_missing }) => {
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date must be YYYY-MM-DD");
+    const kind = await resolveList(list, create_list_if_missing);
+    const id = uid();
+    const item = { id, type: kind.id, name: name.trim(), date: date || "", note: note?.trim() || "", createdAt: new Date().toISOString() };
+    if (city) item.city = city.trim();
+    if (person) item.person = person.trim();
+    if (occasion) item.occasion = occasion.trim();
+    await lists.doc(id).set({ ...item, updatedAt: FieldValue.serverTimestamp() });
+    return text(`Added to ${kind.label}: ${person ? person + " · " : ""}${item.name}${date ? ` (${date})` : ""}  id=${id}`);
+  }
+);
+
+server.tool(
+  "list_list_items",
+  "Show entries in the planner's side lists (movies, books, restaurants, gifts, cities, custom lists). Omit `list` to see every list.",
+  { list: z.string().optional().describe("List name or id; omit for all") },
+  async ({ list }) => {
+    const kinds = await allListKinds();
+    const only = list ? (await resolveList(list, false)).id : null;
+    const all = await liveDocs(lists);
+    const out = [];
+    for (const k of kinds) {
+      if (only && k.id !== only) continue;
+      const rows = all.filter((x) => x.type === k.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      if (only || rows.length) out.push(`${k.label} (${rows.length}):`, ...(rows.length ? rows.map((x) => `- ${x.person ? x.person + " · " : ""}${x.name}${x.date ? ` | ${x.date}` : ""}${x.city ? ` | ${x.city}` : ""}${x.occasion ? ` | ${x.occasion}` : ""}${x.note ? ` | ${x.note}` : ""}  id=${x.id}`) : ["(empty)"]), "");
+    }
+    return text(out.length ? out.join("\n") : "All lists are empty.");
+  }
+);
+
+server.tool(
+  "delete_list_item",
+  "Move a list entry to the planner's trash (restorable on the website for 30 days). Only when the user asks to remove it.",
+  { id: z.string() },
+  async ({ id }) => {
+    const ref = lists.doc(id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().deletedAt) throw new Error(`No list entry with id ${id}.`);
+    await ref.update({ deletedAt: new Date().toISOString(), updatedAt: FieldValue.serverTimestamp() });
+    return text(`Moved to trash: ${snap.data().name}`);
   }
 );
 

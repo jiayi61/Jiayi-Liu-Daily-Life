@@ -30,7 +30,7 @@
   const TRASH_DAYS = 30;
 
   /* ---------- state ---------- */
-  const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {} });
+  const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {}, lists: [], listTypes: [] });
   let state = blank(); // filled in by cloud.js after sign-in
   let selected = todayStr();
   let filter = "all";
@@ -103,6 +103,7 @@
     renderNotes();
     renderSummary();
     renderTrashCount();
+    window.Planner?.onRender?.();
   }
 
   function renderDate() {
@@ -467,6 +468,9 @@
     const out = [];
     for (const t of state.todos) if (t.deletedAt)
       out.push({ key: `t:${t.id}`, at: t.deletedAt, kind: "待办", title: t.title, sub: `截止 ${t.due.replace("T", " ")}` });
+    for (const x of state.lists || []) if (x.deletedAt)
+      out.push({ key: `l:${x.id}`, at: x.deletedAt, kind: window.Planner?.listLabel?.(x.type) || "清单",
+        title: x.person ? `${x.person} · ${x.name}` : x.name, sub: x.date ? fmtDay(x.date) : "清单条目" });
     for (const e of state.events) {
       if (e.deletedAt) {
         out.push({ key: `e:${e.id}`, at: e.deletedAt, kind: "日程", title: e.title,
@@ -480,7 +484,10 @@
 
   function applyTrash(key, action) { // action: "restore" | "purge"
     const [k, id, day] = key.split(":");
-    if (k === "t") {
+    if (k === "l") {
+      const x = state.lists.find((y) => y.id === id); if (!x) return;
+      if (action === "restore") delete x.deletedAt; else state.lists = state.lists.filter((y) => y !== x);
+    } else if (k === "t") {
       const t = state.todos.find((x) => x.id === id); if (!t) return;
       if (action === "restore") delete t.deletedAt; else state.todos = state.todos.filter((x) => x !== t);
     } else {
@@ -594,6 +601,11 @@
     legacy() { const s = load(); return s.todos.length || s.events.length || Object.keys(s.notes).length || Object.keys(s.moods).length ? s : null; },
     clearLegacy() { localStorage.removeItem(STORE_KEY); },
     dialog: openDialog,
+    // used by lists.js
+    commit() { save(); render(); },
+    toast: (msg, undo) => toast(msg, undo),
+    trash: (key, action) => applyTrash(key, action),
+    util: { esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay },
   };
 
   render();

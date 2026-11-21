@@ -4,6 +4,8 @@
 //   users/{uid}/todos/{id}   { title, due, dueAt(Timestamp), prio, tag, done, doneAt, createdAt, updatedAt }
 //   users/{uid}/events/{id}  { title, start, end, note, color, repeat, date, skip[], doneOn[], updatedAt }
 //   users/{uid}/days/{date}  { note, mood, updatedAt }
+//   users/{uid}/lists/{id}   { type, name, date, note, city?, person?, occasion?, createdAt, deletedAt? }  (movies, restaurants, gifts…)
+//   users/{uid}/listTypes/{id} { label, icon }  user-made list kinds
 import { FIREBASE_CONFIG, ALLOWED_EMAILS } from "./firebase-config.js";
 
 const V = "10.12.2";
@@ -21,6 +23,10 @@ function unlock() {
   document.body.classList.remove("locked");
   gate.hidden = true;
 }
+// state arrays that map 1:1 to a collection of {id}-keyed documents
+const ARRAYS = ["todos", "events", "lists", "listTypes"];
+const NAMES = [...ARRAYS, "days"];
+const emptyMirror = () => Object.fromEntries(NAMES.map((n) => [n, new Map()]));
 const META_FIELDS = ["updatedAt", "dueAt"];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const show = (html) => { box.innerHTML = html; };
@@ -72,7 +78,7 @@ async function main() {
   let ready = false;
   let timer = null;
   // mirror of what Firestore has, per collection: Map<id, cleanedData>
-  let mirror = { todos: new Map(), events: new Map(), days: new Map() };
+  let mirror = emptyMirror();
   let profile = null; // { nickname } from users/{uid}/meta/profile
 
   const col = (name) => fs.collection(db, "users", user.uid, name);
@@ -131,14 +137,13 @@ async function main() {
     }
     const strip = (o) => JSON.parse(JSON.stringify(o)); // drop undefined
     return {
-      todos: new Map(s.todos.map((t) => [t.id, strip(t)])),
-      events: new Map(s.events.map((e) => [e.id, strip(e)])),
+      ...Object.fromEntries(ARRAYS.map((n) => [n, new Map((s[n] || []).map((x) => [x.id, strip(x)]))])),
       days,
     };
   }
 
   function stateFromDocs(m, base) {
-    const s = { ...base, todos: [...m.todos.values()], events: [...m.events.values()], notes: {}, moods: {} };
+    const s = { ...base, ...Object.fromEntries(ARRAYS.map((n) => [n, [...m[n].values()]])), notes: {}, moods: {} };
     for (const [d, v] of m.days) { if (v.note) s.notes[d] = v.note; if (v.mood) s.moods[d] = v.mood; }
     return s;
   }
@@ -149,7 +154,7 @@ async function main() {
     if (!user || !ready) return;
     const local = docsFromState(Planner.get());
     const ops = [];
-    for (const name of ["todos", "events", "days"]) {
+    for (const name of NAMES) {
       const L = local[name], R = mirror[name];
       for (const [id, v] of L) if (!R.has(id) || stable(R.get(id)) !== stable(v)) ops.push(["set", name, id, v]);
       for (const id of R.keys()) if (!L.has(id)) ops.push(["del", name, id]);
@@ -197,7 +202,7 @@ async function main() {
 
   /* ---------- pull remote changes ---------- */
   function subscribe() {
-    const names = ["todos", "events", "days"];
+    const names = NAMES;
     const firstLoaded = new Set();
 
     names.forEach((name) => {
@@ -230,12 +235,12 @@ async function main() {
   }
 
   function initialMerge(fromCache) {
-    const merged = { todos: new Map(mirror.todos), events: new Map(mirror.events), days: new Map(mirror.days) };
+    const merged = Object.fromEntries(NAMES.map((n) => [n, new Map(mirror[n])]));
     const legacy = Planner.legacy();
     if (legacy) {
       // data from the old browser-only version: move it into the account once (cloud wins on conflicts)
       const local = docsFromState(legacy);
-      for (const name of ["todos", "events", "days"]) for (const [id, v] of local[name]) if (!merged[name].has(id)) merged[name].set(id, v);
+      for (const name of NAMES) for (const [id, v] of local[name]) if (!merged[name].has(id)) merged[name].set(id, v);
       Planner.clearLegacy();
     }
     ready = true;
@@ -318,7 +323,7 @@ async function main() {
   auth.onAuthStateChanged(a, (u) => {
     unsubs.forEach((x) => x()); unsubs = [];
     user = u; ready = false; profile = null;
-    mirror = { todos: new Map(), events: new Map(), days: new Map() };
+    mirror = emptyMirror();
     if (!u) { showLogin(); return; }
     if (ALLOWED_EMAILS.length && !ALLOWED_EMAILS.includes(u.email)) {
       alert("这个账号没有权限使用这个日程本。");

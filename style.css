@@ -338,3 +338,58 @@ body.locked { overflow: hidden; }
 .toast button { background: transparent; border: 0; color: #ffd3c4; font-weight: 700; cursor: pointer; font-size: 14px; }
 #whoBtn { cursor: pointer; border-radius: 8px; padding: 2px 4px; }
 #whoBtn:hover { background: var(--paper-2); color: var(--ink); }
+
+/* ---------- Lists drawer ---------- */
+.top-actions { flex-wrap: wrap; }
+.drawer { position: fixed; inset: 0; z-index: 40; }
+.drawer-bg { position: absolute; inset: 0; background: rgba(40, 30, 20, .3); opacity: 0; transition: opacity .2s; }
+.drawer-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); background: var(--paper);
+  box-shadow: -10px 0 40px rgba(0,0,0,.15); display: flex; flex-direction: column; transform: translateX(100%); transition: transform .22s ease;
+  padding: max(16px, env(safe-area-inset-top)) 18px max(16px, env(safe-area-inset-bottom));
+}
+.drawer.open .drawer-bg { opacity: 1; }
+.drawer.open .drawer-panel { transform: none; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; }
+.drawer-head h2 { margin: 0; font-family: var(--serif); font-size: 20px; }
+.list-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 10px; }
+.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 10px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.chip small { opacity: .7; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip.add { border-style: dashed; }
+.list-body { flex: 1; overflow: auto; }
+.list-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--paper-2); padding: 10px; border-radius: 12px; }
+.list-add label, .review-steps label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-soft); }
+.list-add label:first-child { grid-column: 1 / -1; }
+.list-add button { grid-column: 1 / -1; }
+.list-add input, #editBody input[data-le], #editBody #ntLabel, #editBody #ntIcon, #editBody #pfNick, .rv-custom input, .review-steps textarea {
+  border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 14px; color: var(--ink); min-width: 0;
+}
+.list-items { list-style: none; margin: 10px 0; padding: 0; }
+.list-items li { display: flex; align-items: center; gap: 4px; padding: 9px 2px; border-bottom: 1px dashed var(--line); }
+.list-items li:hover .icon-btn { opacity: 1; }
+.li-main { flex: 1; min-width: 0; }
+.li-main b { font-weight: 600; word-break: break-word; }
+.li-main small { display: block; color: var(--ink-soft); font-size: 12px; margin-top: 1px; }
+.list-empty { color: var(--ink-soft); font-size: 13px; text-align: center; padding: 20px 6px; }
+.ghost.small { font-size: 12px; padding: 4px 10px; margin-top: 8px; }
+.drawer-foot { padding-top: 10px; border-top: 1px solid var(--line); }
+.drawer-foot .ghost { width: 100%; }
+
+/* ---------- Weekly review dialog ---------- */
+#editDlg:has(.review-steps) { width: min(620px, 96vw); }
+.review-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 14px; }
+.review-steps li > b { display: block; margin-bottom: 6px; }
+.review-steps textarea { width: 100%; box-sizing: border-box; resize: vertical; font-size: 12px; line-height: 1.5; margin-bottom: 6px; }
+.seg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.rv-custom { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.rv-custom input { padding: 4px 6px; font-size: 13px; }
+.rv-list { list-style: none; padding: 0; margin: 8px 0; max-height: 240px; overflow: auto; }
+.rv-list li { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.rv-list label { display: block !important; font-size: 14px !important; color: var(--ink) !important; cursor: pointer; }
+.rv-list small { color: var(--ink-soft); }
+.rv-list li.dup { opacity: .5; }
+.rv-tag { font-size: 12px; background: var(--paper-2); border-radius: 6px; padding: 1px 6px; color: var(--ink-soft); }
+.rv-tag em { font-style: normal; color: var(--accent); }
+.rv-ok { color: var(--green); font-weight: 600; }
+#editDlg { max-height: 92vh; overflow: auto; }

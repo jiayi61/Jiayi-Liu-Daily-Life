@@ -10,6 +10,8 @@
 - **云同步**：Google 或邮箱登录，多设备实时同步，断网时照常使用、联网后自动补传。
 - **手机 App**：可添加到手机主屏幕，全屏打开，离线可用。
 - **备份 / 恢复**：随时导出、导入 JSON 文件。
+- **📦 每周回顾**：一键复制这一周的日程、待办、笔记和心情，粘贴给任意 AI（DeepSeek、豆包、ChatGPT…）聊 5 分钟；再把 AI 的回复粘贴回来，自动识别里面的清单行，勾选确认后加入。
+- **📚 清单（侧栏）**：电影、书、餐厅、礼物、城市，也可以自己新建清单。可以手动添加，也可以从每周回顾导入。
 - **垃圾箱**：删除的日程和待办先进垃圾箱，30 天内可恢复；删除后还能立刻点「撤销」。
 - **每个人自己的称呼**：第一次登录时填写一个称呼，点右上角名字可以修改。
 
@@ -58,8 +60,11 @@ Firestore 中每一项单独一个文档：
 users/{uid}/todos/{id}    title, due, dueAt(时间戳), prio, tag, done, doneAt, createdAt
 users/{uid}/events/{id}   title, start, end, note, color, repeat, date, skip[], doneOn[]
 users/{uid}/days/{日期}    note, mood
+users/{uid}/lists/{id}     type, name, date, note, city?, person?, occasion?, createdAt
+users/{uid}/listTypes/{id} label, icon（自己新建的清单）
 users/{uid}/meta/profile  nickname（第一次登录时填写，标题显示「称呼's Daily Planner」）
 ```
+删除的条目带 `deletedAt`（在垃圾箱里，30 天后自动清除）。
 `dueAt` 是真正的时间戳字段，以后可以直接用它查询「1 小时内到期的待办」来发推送。
 
 ## 和 Claude 聊天时直接记待办

@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body class="locked">
   <div class="book">
@@ -27,6 +27,8 @@
       </div>
       <div class="sync-box" id="syncBox"></div>
       <div class="top-actions">
+        <button class="ghost" id="reviewBtn" title="复制这一周给 AI 回顾，再把整理好的清单粘贴回来">📦 每周回顾</button>
+        <button class="ghost" id="listsBtn" title="电影、餐厅、礼物、城市……">📚 清单</button>
         <button class="ghost" id="trashBtn" title="误删的内容可以在这里找回">🗑 垃圾箱<span id="trashCount"></span></button>
         <button class="ghost" id="exportBtn" title="下载备份文件">⬇︎ 备份</button>
         <label class="ghost" title="从备份文件恢复">⬆︎ 恢复<input type="file" id="importInput" accept="application/json" hidden /></label>
@@ -173,8 +175,25 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=6"></script>
-  <script type="module" src="cloud.js?v=6"></script>
+  <!-- ===== Lists drawer ===== -->
+  <aside class="drawer" id="listsDrawer" hidden>
+    <div class="drawer-bg"></div>
+    <div class="drawer-panel">
+      <div class="drawer-head">
+        <h2>📚 我的清单</h2>
+        <button type="button" class="ghost" id="listsClose" aria-label="关闭">✕</button>
+      </div>
+      <div class="list-tabs" id="listTabs"></div>
+      <div class="list-body" id="listBody"></div>
+      <div class="drawer-foot">
+        <button type="button" class="ghost" data-openreview>📥 粘贴 AI 整理的结果</button>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js?v=7"></script>
+  <script src="lists.js?v=7"></script>
+  <script type="module" src="cloud.js?v=7"></script>
   <script>
     if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
   </script>
