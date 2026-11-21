@@ -1,4 +1,4 @@
-/* Jiayi's Daily Planner — all data lives in localStorage */
+/* Daily Planner — UI and state; cloud.js syncs it to Firestore */
 (() => {
   "use strict";
 

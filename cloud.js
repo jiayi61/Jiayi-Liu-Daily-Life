@@ -73,18 +73,56 @@ async function main() {
   let timer = null;
   // mirror of what Firestore has, per collection: Map<id, cleanedData>
   let mirror = { todos: new Map(), events: new Map(), days: new Map() };
+  let profile = null; // { name, nickname } from users/{uid}/meta/profile
 
   const col = (name) => fs.collection(db, "users", user.uid, name);
 
   /* ---------- status UI ---------- */
   function status(kind) {
     const label = { ok: "☁️ 已同步", saving: "⏳ 同步中…", offline: "📴 离线 · 联网后自动同步", err: "⚠️ 同步失败" }[kind];
-    const name = esc(user.displayName || user.email);
+    const name = esc(profile?.nickname || user.displayName || user.email);
     const avatar = user.photoURL ? `<img src="${esc(user.photoURL)}" alt="" referrerpolicy="no-referrer" />` : "👤";
     show(`<span class="sync ${kind}">${label}</span>
-      <span class="who" title="${esc(user.email)}">${avatar}<span>${name}</span></span>
+      <span class="who" id="whoBtn" title="${esc(user.email)} · 点击修改称呼">${avatar}<span>${name}</span></span>
       <button class="ghost" id="logoutBtn">退出</button>`);
     document.getElementById("logoutBtn").onclick = logout;
+    document.getElementById("whoBtn").onclick = () => askProfile(true);
+  }
+
+  /* ---------- who is this? (asked once per account, editable by clicking the name) ---------- */
+  const profileRef = () => fs.doc(db, "users", user.uid, "meta", "profile");
+  function applyName() {
+    const nick = profile?.nickname || (user.displayName || user.email.split("@")[0]).split(" ")[0];
+    document.getElementById("appTitle").textContent = `${nick}'s Daily Planner`;
+    document.title = `${nick}'s Daily Planner · 每日日程本`;
+  }
+  async function loadProfile() {
+    const uidAtStart = user.uid;
+    try { const snap = await fs.getDoc(profileRef()); if (user?.uid === uidAtStart) profile = snap.exists() ? snap.data() : null; }
+    catch (e) { console.warn("profile", e); return; } // offline with no cache: just use the Google name for now
+    if (user?.uid !== uidAtStart) return;
+    applyName(); if (ready) status("ok");
+    if (!profile?.nickname) askProfile(false);
+  }
+  async function askProfile(editing) {
+    if (document.getElementById("editDlg").open) return;
+    const gName = user.displayName || "";
+    const name = profile?.name ?? gName;
+    const nick = profile?.nickname ?? gName.split(" ")[0];
+    const r = await Planner.dialog(editing ? "修改称呼" : "欢迎！先认识一下你 👋", `
+      ${editing ? "" : `<p class="hint">只需要填一次，之后每次登录都会记得。</p>`}
+      <label>你的姓名<input type="text" id="pfName" value="${esc(name)}" placeholder="例如：刘佳仪" /></label>
+      <label>希望被怎么称呼？<input type="text" id="pfNick" value="${esc(nick)}" placeholder="例如：Jiayi" /></label>`, [
+      ...(editing ? [{ value: "cancel", label: "取消" }] : []),
+      { value: "ok", label: "保存", cls: "primary" },
+    ]);
+    if (r !== "ok" || !user) return;
+    const n = document.getElementById("pfName").value.trim();
+    const k = document.getElementById("pfNick").value.trim() || n.split(" ")[0] || gName.split(" ")[0];
+    if (!k) return;
+    profile = { name: n, nickname: k };
+    applyName(); status(ready ? "ok" : "saving");
+    fs.setDoc(profileRef(), { ...profile, updatedAt: fs.serverTimestamp() }).catch((e) => { console.error(e); status("err"); });
   }
 
   /* ---------- state <-> documents ---------- */
@@ -282,7 +320,7 @@ async function main() {
 
   auth.onAuthStateChanged(a, (u) => {
     unsubs.forEach((x) => x()); unsubs = [];
-    user = u; ready = false;
+    user = u; ready = false; profile = null;
     mirror = { todos: new Map(), events: new Map(), days: new Map() };
     if (!u) { showLogin(); return; }
     if (ALLOWED_EMAILS.length && !ALLOWED_EMAILS.includes(u.email)) {
@@ -291,10 +329,10 @@ async function main() {
       return;
     }
     unlock();
-    const first = (u.displayName || u.email.split("@")[0]).split(" ")[0];
-    document.getElementById("appTitle").textContent = `${first}'s Daily Planner`;
+    applyName();
     status("saving");
     subscribe();
+    loadProfile();
   });
 }
 

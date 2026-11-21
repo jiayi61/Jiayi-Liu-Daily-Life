@@ -10,6 +10,8 @@
 - **云同步**：Google 或邮箱登录，多设备实时同步，断网时照常使用、联网后自动补传。
 - **手机 App**：可添加到手机主屏幕，全屏打开，离线可用。
 - **备份 / 恢复**：随时导出、导入 JSON 文件。
+- **垃圾箱**：删除的日程和待办先进垃圾箱，30 天内可恢复；删除后还能立刻点「撤销」。
+- **每个人自己的称呼**：第一次登录时填写姓名和称呼，点右上角名字可以修改。
 
 ---
 
@@ -56,6 +58,7 @@ Firestore 中每一项单独一个文档：
 users/{uid}/todos/{id}    title, due, dueAt(时间戳), prio, tag, done, doneAt, createdAt
 users/{uid}/events/{id}   title, start, end, note, color, repeat, date, skip[], doneOn[]
 users/{uid}/days/{日期}    note, mood
+users/{uid}/meta/profile  name, nickname（第一次登录时填写，标题显示「称呼's Daily Planner」）
 ```
 `dueAt` 是真正的时间戳字段，以后可以直接用它查询「1 小时内到期的待办」来发推送。
 

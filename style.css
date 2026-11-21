@@ -336,3 +336,5 @@ body.locked { overflow: hidden; }
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 .toast button { background: transparent; border: 0; color: #ffd3c4; font-weight: 700; cursor: pointer; font-size: 14px; }
+#whoBtn { cursor: pointer; border-radius: 8px; padding: 2px 4px; }
+#whoBtn:hover { background: var(--paper-2); color: var(--ink); }
