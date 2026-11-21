@@ -73,7 +73,7 @@ async function main() {
   let timer = null;
   // mirror of what Firestore has, per collection: Map<id, cleanedData>
   let mirror = { todos: new Map(), events: new Map(), days: new Map() };
-  let profile = null; // { name, nickname } from users/{uid}/meta/profile
+  let profile = null; // { nickname } from users/{uid}/meta/profile
 
   const col = (name) => fs.collection(db, "users", user.uid, name);
 
@@ -107,20 +107,17 @@ async function main() {
   async function askProfile(editing) {
     if (document.getElementById("editDlg").open) return;
     const gName = user.displayName || "";
-    const name = profile?.name ?? gName;
     const nick = profile?.nickname ?? gName.split(" ")[0];
     const r = await Planner.dialog(editing ? "修改称呼" : "欢迎！先认识一下你 👋", `
-      ${editing ? "" : `<p class="hint">只需要填一次，之后每次登录都会记得。</p>`}
-      <label>你的姓名<input type="text" id="pfName" value="${esc(name)}" placeholder="例如：刘佳仪" /></label>
-      <label>希望被怎么称呼？<input type="text" id="pfNick" value="${esc(nick)}" placeholder="例如：Jiayi" /></label>`, [
+      <label>希望我们怎么称呼你？<input type="text" id="pfNick" value="${esc(nick)}" placeholder="例如：小王" /></label>
+      ${editing ? "" : `<p class="hint">只需要填一次，之后点右上角的名字可以修改。</p>`}`, [
       ...(editing ? [{ value: "cancel", label: "取消" }] : []),
       { value: "ok", label: "保存", cls: "primary" },
     ]);
     if (r !== "ok" || !user) return;
-    const n = document.getElementById("pfName").value.trim();
-    const k = document.getElementById("pfNick").value.trim() || n.split(" ")[0] || gName.split(" ")[0];
+    const k = document.getElementById("pfNick").value.trim() || gName.split(" ")[0];
     if (!k) return;
-    profile = { name: n, nickname: k };
+    profile = { nickname: k };
     applyName(); status(ready ? "ok" : "saving");
     fs.setDoc(profileRef(), { ...profile, updatedAt: fs.serverTimestamp() }).catch((e) => { console.error(e); status("err"); });
   }
