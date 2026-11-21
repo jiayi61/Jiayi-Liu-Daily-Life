@@ -30,7 +30,7 @@
 
   /* ---------- state ---------- */
   const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {} });
-  let state = load();
+  let state = blank(); // filled in by cloud.js after sign-in
   let selected = todayStr();
   let filter = "all";
   let doneCollapsed = true;
@@ -44,7 +44,6 @@
     return blank();
   }
   function save() {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
     if (window.PlannerCloud) window.PlannerCloud.queue();
   }
 
@@ -474,9 +473,11 @@
     get: () => state,
     replace(next) {
       state = next ? { ...blank(), ...next } : blank();
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
       render();
     },
+    // data saved by the old browser-only version, merged into the account once on first sign-in
+    legacy() { const s = load(); return s.todos.length || s.events.length || Object.keys(s.notes).length || Object.keys(s.moods).length ? s : null; },
+    clearLegacy() { localStorage.removeItem(STORE_KEY); },
     dialog: openDialog,
   };
 

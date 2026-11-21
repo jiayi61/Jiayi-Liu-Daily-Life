@@ -8,7 +8,19 @@ import { FIREBASE_CONFIG, ALLOWED_EMAILS } from "./firebase-config.js";
 
 const V = "10.12.2";
 const box = document.getElementById("syncBox");
-const SYNC_FLAG = "jiayi-planner-synced-uid";
+const gate = document.getElementById("gate");
+const gateMsg = document.getElementById("gateMsg");
+const gateBtns = document.getElementById("gateBtns");
+function lock(msg, showButtons) {
+  document.body.classList.add("locked");
+  gate.hidden = false;
+  gateMsg.textContent = msg || "";
+  gateBtns.hidden = !showButtons;
+}
+function unlock() {
+  document.body.classList.remove("locked");
+  gate.hidden = true;
+}
 const META_FIELDS = ["updatedAt", "dueAt"];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const show = (html) => { box.innerHTML = html; };
@@ -34,10 +46,10 @@ async function main() {
   const config = EMU ? { apiKey: "demo-key", authDomain: "localhost", projectId: "demo-planner" } : FIREBASE_CONFIG;
 
   if (!config.apiKey) {
-    show(`<span class="sync local" title="还没有配置 Firebase，数据只保存在这个浏览器里">💾 仅本机</span>`);
+    lock("网站还没有配置 Firebase，暂时无法登录。", false);
     return;
   }
-  show(`<span class="sync">连接中…</span>`);
+  lock("加载中…", false);
 
   const [{ initializeApp }, auth, fs] = await Promise.all([
     import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`),
@@ -183,13 +195,13 @@ async function main() {
   }
 
   function initialMerge(fromCache) {
-    const firstTimeHere = localStorage.getItem(SYNC_FLAG) !== user.uid;
     const merged = { todos: new Map(mirror.todos), events: new Map(mirror.events), days: new Map(mirror.days) };
-    if (firstTimeHere) {
-      // first sign-in on this device: keep anything only stored locally (cloud wins on conflicts)
-      const local = docsFromState(Planner.get());
+    const legacy = Planner.legacy();
+    if (legacy) {
+      // data from the old browser-only version: move it into the account once (cloud wins on conflicts)
+      const local = docsFromState(legacy);
       for (const name of ["todos", "events", "days"]) for (const [id, v] of local[name]) if (!merged[name].has(id)) merged[name].set(id, v);
-      localStorage.setItem(SYNC_FLAG, user.uid);
+      Planner.clearLegacy();
     }
     ready = true;
     Planner.replace(stateFromDocs(merged, Planner.get()), { fromCloud: true });
@@ -242,21 +254,24 @@ async function main() {
 
   async function logout() {
     flush();
-    if (!confirm("退出后，这台设备上的数据副本会被清除（云端数据不受影响，重新登录就会回来）。确定退出？")) return;
+    if (!confirm("确定退出登录？（数据都在云端，重新登录就会回来）")) return;
     unsubs.forEach((u) => u()); unsubs = [];
     ready = false;
+    Planner.replace(null);
+    lock("正在退出…", false);
     await auth.signOut(a);
+    // remove this device's offline copy so the next person sees nothing
+    await fs.terminate(db).catch(() => {});
     await fs.clearIndexedDbPersistence(db).catch(() => {});
-    localStorage.removeItem(SYNC_FLAG);
-    Planner.replace(null, { fromCloud: true });
+    location.reload();
   }
 
+  document.getElementById("loginBtn").onclick = googleLogin;
+  document.getElementById("emailBtn").onclick = emailLogin;
   function showLogin() {
-    show(`<span class="sync local" title="登录后数据会保存到云端，并在你所有设备间同步">💾 仅本机</span>
-      <button class="primary small" id="loginBtn">Google 登录</button>
-      <button class="ghost" id="emailBtn">邮箱登录</button>`);
-    document.getElementById("loginBtn").onclick = googleLogin;
-    document.getElementById("emailBtn").onclick = emailLogin;
+    show("");
+    Planner.replace(null);
+    lock("", true);
   }
 
   // surface errors from a redirect sign-in (used when the popup is blocked)
@@ -275,6 +290,9 @@ async function main() {
       auth.signOut(a);
       return;
     }
+    unlock();
+    const first = (u.displayName || u.email.split("@")[0]).split(" ")[0];
+    document.getElementById("appTitle").textContent = `${first}'s Daily Planner`;
     status("saving");
     subscribe();
   });
@@ -282,5 +300,5 @@ async function main() {
 
 main().catch((e) => {
   console.error(e);
-  show(`<span class="sync err" title="${esc(e.message)}">⚠️ 云同步加载失败 · 数据暂存本机</span>`);
+  lock("加载失败，请检查网络后刷新页面。", false);
 });
