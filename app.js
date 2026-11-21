@@ -27,6 +27,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toMin = (t) => { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
   const todayStr = () => ymd(new Date());
+  const TRASH_DAYS = 30;
 
   /* ---------- state ---------- */
   const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {} });
@@ -35,6 +36,9 @@
   let filter = "all";
   let doneCollapsed = true;
   let pickedColor = COLORS[0];
+  // items in the trash keep living in the same arrays, marked with deletedAt
+  const liveTodos = () => state.todos.filter((t) => !t.deletedAt);
+  const liveEvents = () => state.events.filter((e) => !e.deletedAt);
 
   function load() {
     try {
@@ -59,7 +63,7 @@
     return false;
   }
   const eventsOn = (day) =>
-    state.events.filter((e) => occursOn(e, day)).sort((a, b) => toMin(a.start) - toMin(b.start) || (toMin(a.end) ?? 0) - (toMin(b.end) ?? 0));
+    liveEvents().filter((e) => occursOn(e, day)).sort((a, b) => toMin(a.start) - toMin(b.start) || (toMin(a.end) ?? 0) - (toMin(b.end) ?? 0));
   const isEventDone = (ev, day) => (ev.doneOn || []).includes(day);
 
   /* ---------- todo logic ---------- */
@@ -98,6 +102,7 @@
     renderTodos();
     renderNotes();
     renderSummary();
+    renderTrashCount();
   }
 
   function renderDate() {
@@ -119,7 +124,7 @@
     for (let i = 0; i < 7; i++) {
       const day = addDays(start, i);
       const dd = parseYmd(day);
-      const dueN = state.todos.filter((t) => !t.done && dueDay(t) === day).length;
+      const dueN = liveTodos().filter((t) => !t.done && dueDay(t) === day).length;
       const hasEv = eventsOn(day).length > 0;
       const dots = (hasEv ? '<i class="s"></i>' : "") + "<i></i>".repeat(Math.min(dueN, 3));
       html += `<button class="wday ${day === selected ? "sel" : ""} ${day === today ? "today" : ""}" data-day="${day}">
@@ -186,11 +191,11 @@
   function renderTodos() {
     const now = Date.now();
     const byDue = (a, b) => dueDate(a) - dueDate(b) || b.prio - a.prio;
-    const open = state.todos.filter((t) => !t.done);
+    const open = liveTodos().filter((t) => !t.done);
     const over = open.filter((t) => dueDate(t) < now).sort(byDue);
     const onDay = open.filter((t) => dueDay(t) === selected && dueDate(t) >= now).sort(byDue);
     const later = open.filter((t) => dueDay(t) !== selected && dueDate(t) >= now).sort(byDue);
-    const done = state.todos
+    const done = liveTodos()
       .filter((t) => t.done && ((t.doneAt || "").slice(0, 10) === selected || dueDay(t) === selected))
       .sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
 
@@ -230,16 +235,16 @@
   function renderSummary() {
     const evs = eventsOn(selected);
     const evDone = evs.filter((e) => isEventDone(e, selected)).length;
-    const dayTodos = state.todos.filter((t) => dueDay(t) === selected || (t.done && (t.doneAt || "").slice(0, 10) === selected));
+    const dayTodos = liveTodos().filter((t) => dueDay(t) === selected || (t.done && (t.doneAt || "").slice(0, 10) === selected));
     const tdDone = dayTodos.filter((t) => t.done).length;
     const total = evs.length + dayTodos.length;
     const pct = total ? Math.round(((evDone + tdDone) / total) * 100) : 0;
     $("#ringPct").textContent = `${pct}%`;
     $("#ringFg").style.strokeDashoffset = 314.16 * (1 - pct / 100);
     $("#statSched").textContent = evs.length;
-    $("#statDue").textContent = state.todos.filter((t) => !t.done && dueDay(t) === selected).length;
-    $("#statOver").textContent = state.todos.filter((t) => !t.done && dueDate(t) < Date.now()).length;
-    $("#statOpen").textContent = state.todos.filter((t) => !t.done).length;
+    $("#statDue").textContent = liveTodos().filter((t) => !t.done && dueDay(t) === selected).length;
+    $("#statOver").textContent = liveTodos().filter((t) => !t.done && dueDate(t) < Date.now()).length;
+    $("#statOpen").textContent = liveTodos().filter((t) => !t.done).length;
     const idx = parseYmd(selected).getDate() % QUOTES.length;
     $("#quote").textContent = `“${QUOTES[idx]}”`;
   }
@@ -279,7 +284,8 @@
 
   async function deleteEvent(ev) {
     if (!ev.repeat || ev.repeat === "once") {
-      state.events = state.events.filter((e) => e !== ev);
+      ev.deletedAt = new Date().toISOString();
+      toast(`已把「${ev.title}」放进垃圾箱`, () => applyTrash(`e:${ev.id}`, "restore"));
     } else {
       const r = await openDialog("删除重复日程", `<p>「${esc(ev.title)}」是重复日程，要怎么删除？</p>`, [
         { value: "cancel", label: "取消" },
@@ -288,9 +294,15 @@
       ]);
       ev = state.events.find((x) => x.id === ev.id);
       if (!ev) return;
-      if (r === "one") (ev.skip ||= []).push(selected);
-      else if (r === "all") state.events = state.events.filter((e) => e !== ev);
-      else return;
+      const day = selected;
+      if (r === "one") {
+        (ev.skip ||= []).push(day);
+        (ev.skipDeleted ||= {})[day] = new Date().toISOString();
+        toast(`已把「${ev.title}」${fmtDay(day)}这一天放进垃圾箱`, () => applyTrash(`s:${ev.id}:${day}`, "restore"));
+      } else if (r === "all") {
+        ev.deletedAt = new Date().toISOString();
+        toast(`已把「${ev.title}」放进垃圾箱`, () => applyTrash(`e:${ev.id}`, "restore"));
+      } else return;
     }
     save(); render();
   }
@@ -406,7 +418,9 @@
     } else if (t.dataset.todoEdit) editTodo(find(t.dataset.todoEdit));
     else if (t.dataset.todoDel) {
       const td = find(t.dataset.todoDel);
-      if (confirm(`删除待办「${td.title}」？`)) { state.todos = state.todos.filter((x) => x !== td); save(); render(); }
+      td.deletedAt = new Date().toISOString();
+      save(); render();
+      toast(`已把「${td.title}」放进垃圾箱`, () => applyTrash(`t:${td.id}`, "restore"));
     } else if (t.closest("[data-toggle-done]")) { doneCollapsed = !doneCollapsed; renderTodos(); }
   });
 
@@ -435,6 +449,106 @@
     else state.moods[selected] = b.dataset.mood;
     save(); renderNotes();
   };
+
+  /* ---------- trash ---------- */
+  const fmtDay = (day) => { const d = parseYmd(day); return `${d.getMonth() + 1}月${d.getDate()}日`; };
+  const fmtWhen = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+  function restoreSkip(ev, day) {
+    ev.skip = (ev.skip || []).filter((d) => d !== day);
+    if (ev.skipDeleted) { delete ev.skipDeleted[day]; if (!Object.keys(ev.skipDeleted).length) delete ev.skipDeleted; }
+  }
+  function dropSkipRecord(ev, day) { // forget the trash entry but keep the day hidden
+    delete ev.skipDeleted[day];
+    if (!Object.keys(ev.skipDeleted).length) delete ev.skipDeleted;
+  }
+
+  function trashEntries() {
+    const out = [];
+    for (const t of state.todos) if (t.deletedAt)
+      out.push({ key: `t:${t.id}`, at: t.deletedAt, kind: "待办", title: t.title, sub: `截止 ${t.due.replace("T", " ")}` });
+    for (const e of state.events) {
+      if (e.deletedAt) {
+        out.push({ key: `e:${e.id}`, at: e.deletedAt, kind: "日程", title: e.title,
+          sub: `${e.start}${e.end ? "–" + e.end : ""} · ${e.repeat && e.repeat !== "once" ? REPEAT_LABEL[e.repeat] : fmtDay(e.date)}` });
+      } else for (const [day, at] of Object.entries(e.skipDeleted || {})) {
+        out.push({ key: `s:${e.id}:${day}`, at, kind: "日程（单天）", title: e.title, sub: `${fmtDay(day)} 这一天 · ${e.start}` });
+      }
+    }
+    return out.sort((a, b) => b.at.localeCompare(a.at));
+  }
+
+  function applyTrash(key, action) { // action: "restore" | "purge"
+    const [k, id, day] = key.split(":");
+    if (k === "t") {
+      const t = state.todos.find((x) => x.id === id); if (!t) return;
+      if (action === "restore") delete t.deletedAt; else state.todos = state.todos.filter((x) => x !== t);
+    } else {
+      const e = state.events.find((x) => x.id === id); if (!e) return;
+      if (k === "e") { if (action === "restore") delete e.deletedAt; else state.events = state.events.filter((x) => x !== e); }
+      else if (action === "restore") restoreSkip(e, day); else dropSkipRecord(e, day);
+    }
+  }
+
+  // things that have sat in the trash for more than 30 days are removed for good
+  function purgeOld() {
+    const cutoff = new Date(Date.now() - TRASH_DAYS * 86400000).toISOString();
+    const n = trashEntries().filter((x) => x.at < cutoff);
+    n.forEach((x) => applyTrash(x.key, "purge"));
+    return n.length;
+  }
+
+  function renderTrashCount() {
+    const n = trashEntries().length;
+    $("#trashCount").textContent = n ? ` ${n}` : "";
+  }
+
+  function trashHtml() {
+    const list = trashEntries();
+    if (!list.length) return `<p class="trash-empty">垃圾箱是空的 🍃</p>`;
+    return `<p class="trash-hint">删除的内容会在这里保留 ${TRASH_DAYS} 天，之后自动清除。</p>
+      <ul class="trash-list">${list.map((x) => `
+        <li><div class="trash-main"><span class="trash-kind">${x.kind}</span> <b>${esc(x.title)}</b>
+          <small>${esc(x.sub)} · 删除于 ${fmtWhen(x.at)}</small></div>
+          <div class="trash-btns"><button type="button" class="ghost" data-restore="${esc(x.key)}">↩︎ 恢复</button>
+          <button type="button" class="ghost danger" data-purge="${esc(x.key)}">彻底删除</button></div></li>`).join("")}
+      </ul>`;
+  }
+
+  async function openTrash() {
+    const body = $("#editBody");
+    const onClick = (e) => {
+      const b = e.target.closest("[data-restore],[data-purge]"); if (!b) return;
+      if (b.dataset.purge && !confirm("彻底删除后就找不回来了，确定吗？")) return;
+      applyTrash(b.dataset.restore || b.dataset.purge, b.dataset.restore ? "restore" : "purge");
+      save(); render();
+      body.innerHTML = trashHtml();
+    };
+    body.addEventListener("click", onClick);
+    const has = trashEntries().length;
+    const r = await openDialog("🗑 垃圾箱", trashHtml(), [
+      ...(has ? [{ value: "empty", label: "清空垃圾箱", cls: "ghost danger" }] : []),
+      { value: "close", label: "关闭", cls: "primary" },
+    ]);
+    body.removeEventListener("click", onClick);
+    if (r === "empty" && trashEntries().length && confirm("清空后里面的内容就找不回来了，确定吗？")) {
+      trashEntries().forEach((x) => applyTrash(x.key, "purge"));
+      save(); render();
+    }
+  }
+  $("#trashBtn").onclick = openTrash;
+
+  // little "moved to trash · undo" bar
+  let toastTimer;
+  function toast(msg, undo) {
+    let el = $("#toast");
+    if (!el) { el = document.createElement("div"); el.id = "toast"; el.className = "toast"; document.body.appendChild(el); }
+    el.innerHTML = `<span>${esc(msg)}</span>${undo ? `<button type="button">撤销</button>` : ""}`;
+    el.classList.add("show");
+    if (undo) el.querySelector("button").onclick = () => { undo(); save(); render(); el.classList.remove("show"); };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 6000);
+  }
 
   // backup / restore
   $("#exportBtn").onclick = () => {
@@ -473,6 +587,7 @@
     get: () => state,
     replace(next) {
       state = next ? { ...blank(), ...next } : blank();
+      if (purgeOld()) save();
       render();
     },
     // data saved by the old browser-only version, merged into the account once on first sign-in

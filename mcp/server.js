@@ -59,10 +59,13 @@ const fmtTodo = (t) =>
 const text = (s) => ({ content: [{ type: "text", text: s }] });
 const header = () => { const d = new Date(); return `Now: ${nowLocal().replace("T", " ")} ${WEEK[d.getDay()]} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n`; };
 
+// items in the website's trash carry deletedAt; everything else ignores them
+const liveDocs = async (c) => (await c.get()).docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.deletedAt);
+
 async function findTodo(ref) {
   const byId = await todos.doc(ref).get();
-  if (byId.exists) return { id: byId.id, ...byId.data() };
-  const all = (await todos.get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+  if (byId.exists && !byId.data().deletedAt) return { id: byId.id, ...byId.data() };
+  const all = await liveDocs(todos);
   const q = ref.toLowerCase();
   const hits = all.filter((t) => t.title.toLowerCase().includes(q));
   const open = hits.filter((t) => !t.done);
@@ -74,7 +77,8 @@ async function findTodo(ref) {
 
 async function writeTodo(t) {
   // the website keeps `id` inside each document too
-  const data = { ...t, dueAt: Timestamp.fromDate(new Date(t.due)), updatedAt: FieldValue.serverTimestamp() };
+  const { updatedAt, dueAt, ...rest } = t; // never copy server-only fields back
+  const data = { ...rest, dueAt: Timestamp.fromDate(new Date(t.due)), updatedAt: FieldValue.serverTimestamp() };
   await todos.doc(t.id).set(data);
 }
 
@@ -106,7 +110,7 @@ server.tool(
     due_on_or_after: z.string().optional().describe("Only to-dos due on/after this local date (YYYY-MM-DD)"),
   },
   async ({ status, due_on_or_before, due_on_or_after }) => {
-    let list = (await todos.get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+    let list = await liveDocs(todos);
     if (status !== "all") list = list.filter((t) => !!t.done === (status === "done"));
     if (due_on_or_before) list = list.filter((t) => t.due.slice(0, 10) <= due_on_or_before);
     if (due_on_or_after) list = list.filter((t) => t.due.slice(0, 10) >= due_on_or_after);
@@ -151,12 +155,12 @@ server.tool(
 
 server.tool(
   "delete_todo",
-  "Permanently delete a to-do. Only use when the user clearly asks to delete/remove it (prefer complete_todo for finished tasks).",
+  "Move a to-do to the planner's trash (the user can restore it on the website for 30 days). Only use when the user clearly asks to delete/remove it (prefer complete_todo for finished tasks).",
   { todo: z.string().describe("id or part of the title") },
   async ({ todo }) => {
     const t = await findTodo(todo);
-    await todos.doc(t.id).delete();
-    return text(`Deleted: ${t.title}`);
+    await todos.doc(t.id).update({ deletedAt: new Date().toISOString(), updatedAt: FieldValue.serverTimestamp() });
+    return text(`Moved to trash: ${t.title} (can be restored from 🗑 垃圾箱 on the website)`);
   }
 );
 
@@ -188,9 +192,9 @@ server.tool(
   { date: z.string().optional().describe("YYYY-MM-DD, default today") },
   async ({ date }) => {
     const day = date || ymd(new Date());
-    const evs = (await events.get()).docs.map((d) => ({ id: d.id, ...d.data() }))
+    const evs = (await liveDocs(events))
       .filter((e) => occursOn(e, day)).sort((a, b) => toMin(a.start) - toMin(b.start));
-    const due = (await todos.get()).docs.map((d) => ({ id: d.id, ...d.data() }))
+    const due = (await liveDocs(todos))
       .filter((t) => t.due.slice(0, 10) === day).sort((a, b) => a.due.localeCompare(b.due));
     const lines = [header(), `Schedule for ${day} ${WEEK[parseYmd(day).getDay()]}:`];
     lines.push(...(evs.length ? evs.map((e) => `- [${(e.doneOn || []).includes(day) ? "x" : " "}] ${e.start}${e.end ? "–" + e.end : ""} ${e.title}${e.note ? ` (${e.note})` : ""}${e.repeat && e.repeat !== "once" ? ` ↻${e.repeat}` : ""}  id=${e.id}`) : ["(nothing scheduled)"]));
@@ -201,15 +205,16 @@ server.tool(
 
 server.tool(
   "delete_schedule_item",
-  "Remove a schedule item. For repeating items, `only_date` removes just that one day.",
+  "Move a schedule item to the planner's trash (restorable on the website for 30 days). For repeating items, `only_date` removes just that one day.",
   { id: z.string(), only_date: z.string().optional().describe("YYYY-MM-DD") },
   async ({ id, only_date }) => {
     const ref = events.doc(id);
     const snap = await ref.get();
-    if (!snap.exists) throw new Error(`No schedule item with id ${id}.`);
-    if (only_date) await ref.update({ skip: FieldValue.arrayUnion(only_date), updatedAt: FieldValue.serverTimestamp() });
-    else await ref.delete();
-    return text(only_date ? `Removed ${snap.data().title} on ${only_date}.` : `Deleted ${snap.data().title}.`);
+    if (!snap.exists || snap.data().deletedAt) throw new Error(`No schedule item with id ${id}.`);
+    const at = new Date().toISOString();
+    if (only_date) await ref.update({ skip: FieldValue.arrayUnion(only_date), [`skipDeleted.${only_date}`]: at, updatedAt: FieldValue.serverTimestamp() });
+    else await ref.update({ deletedAt: at, updatedAt: FieldValue.serverTimestamp() });
+    return text(`Moved to trash: ${snap.data().title}${only_date ? ` on ${only_date}` : ""} (restorable from 🗑 垃圾箱 on the website).`);
   }
 );
 

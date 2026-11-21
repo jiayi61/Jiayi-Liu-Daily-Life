@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body class="locked">
   <div class="book">
@@ -27,6 +27,7 @@
       </div>
       <div class="sync-box" id="syncBox"></div>
       <div class="top-actions">
+        <button class="ghost" id="trashBtn" title="误删的内容可以在这里找回">🗑 垃圾箱<span id="trashCount"></span></button>
         <button class="ghost" id="exportBtn" title="下载备份文件">⬇︎ 备份</button>
         <label class="ghost" title="从备份文件恢复">⬆︎ 恢复<input type="file" id="importInput" accept="application/json" hidden /></label>
       </div>
@@ -172,8 +173,8 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=3"></script>
-  <script type="module" src="cloud.js?v=3"></script>
+  <script src="app.js?v=4"></script>
+  <script type="module" src="cloud.js?v=4"></script>
   <script>
     if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
   </script>
