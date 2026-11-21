@@ -3,7 +3,6 @@
   "use strict";
 
   const STORE_KEY = "jiayi-planner-v1";
-  const COLORS = ["#c8654a", "#d9a23b", "#5f8f6b", "#5b86b0", "#8a6bb0", "#b5657f"];
   const MOODS = ["😄", "🙂", "😐", "😮‍💨", "😢"];
   const WEEK = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
   const QUOTES = [
@@ -26,7 +25,11 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toMin = (t) => { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-  const todayStr = () => ymd(new Date());
+  // a planner day runs 05:00 → 05:00 the next morning, so 1 am still belongs to "yesterday"
+  const DAY_START = 5 * 60;
+  const todayStr = () => ymd(new Date(Date.now() - DAY_START * 60000));
+  const lmin = (t) => { const m = toMin(t); return m == null ? null : m < DAY_START ? m + 1440 : m; }; // minutes on the day page
+  const evEnd = (ev) => { const s = lmin(ev.start), e = lmin(ev.end); return e == null ? null : e <= s ? e + 1440 : e; };
   const TRASH_DAYS = 30;
 
   /* ---------- state ---------- */
@@ -35,7 +38,6 @@
   let selected = todayStr();
   let filter = "all";
   let doneCollapsed = true;
-  let pickedColor = COLORS[0];
   // items in the trash keep living in the same arrays, marked with deletedAt
   const liveTodos = () => state.todos.filter((t) => !t.deletedAt);
   const liveEvents = () => state.events.filter((e) => !e.deletedAt);
@@ -47,6 +49,7 @@
     } catch (_) { /* ignore */ }
     return blank();
   }
+  let profile = null; // { nickname, role, categories[] } — set by cloud.js
   function save() {
     if (window.PlannerCloud) window.PlannerCloud.queue();
   }
@@ -63,7 +66,7 @@
     return false;
   }
   const eventsOn = (day) =>
-    liveEvents().filter((e) => occursOn(e, day)).sort((a, b) => toMin(a.start) - toMin(b.start) || (toMin(a.end) ?? 0) - (toMin(b.end) ?? 0));
+    liveEvents().filter((e) => occursOn(e, day)).sort((a, b) => lmin(a.start) - lmin(b.start) || (evEnd(a) ?? 0) - (evEnd(b) ?? 0));
   const isEventDone = (ev, day) => (ev.doneOn || []).includes(day);
 
   /* ---------- todo logic ---------- */
@@ -134,42 +137,8 @@
     $("#weekStrip").innerHTML = html;
   }
 
-  function renderSchedule() {
-    const list = eventsOn(selected);
-    const isToday = selected === todayStr();
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const isPastDay = selected < todayStr();
-    let html = "";
-    let nowLineDrawn = !isToday;
-
-    list.forEach((ev) => {
-      const s = toMin(ev.start), e = toMin(ev.end) ?? s;
-      if (!nowLineDrawn && s > nowMin) {
-        html += `<li class="now-line" data-t="${pad(now.getHours())}:${pad(now.getMinutes())}"></li>`;
-        nowLineDrawn = true;
-      }
-      const done = isEventDone(ev, selected);
-      const current = isToday && nowMin >= s && nowMin < Math.max(e, s + 1);
-      const past = isPastDay || (isToday && nowMin >= Math.max(e, s + 1));
-      html += `<li class="tl-item ${current ? "now" : ""} ${past ? "past" : ""} ${done ? "done" : ""}" style="--c:${ev.color}">
-        <div class="tl-time">${ev.start}${ev.end ? `<small>${ev.end}</small>` : ""}</div>
-        <div class="tl-dot" style="background:${ev.color}"></div>
-        <div class="tl-body">
-          <input type="checkbox" class="chk" data-ev-done="${ev.id}" ${done ? "checked" : ""} aria-label="完成" />
-          <div class="txt">
-            <div class="ttl">${esc(ev.title)}<span class="badge-now">进行中</span></div>
-            <div class="meta">${ev.end ? `${ev.start} – ${ev.end}` : ev.start}${ev.note ? " · " + esc(ev.note) : ""}${ev.repeat && ev.repeat !== "once" ? `<span class="rep">↻ ${REPEAT_LABEL[ev.repeat]}</span>` : ""}</div>
-          </div>
-          <button class="icon-btn" data-ev-edit="${ev.id}" title="编辑">✎</button>
-          <button class="icon-btn" data-ev-del="${ev.id}" title="删除">✕</button>
-        </div>
-      </li>`;
-    });
-    if (!nowLineDrawn && list.length) html += `<li class="now-line" data-t="${pad(now.getHours())}:${pad(now.getMinutes())}"></li>`;
-    $("#timeline").innerHTML = html;
-    $("#schedEmpty").hidden = list.length > 0;
-  }
+  // the day calendar lives in daycal.js
+  function renderSchedule() { window.Planner?.renderDay?.(selected); }
 
   function todoItem(t) {
     const left = t.done ? null : leftText(t);
@@ -264,25 +233,6 @@
   }
   const SAVE_BTNS = [{ value: "cancel", label: "取消" }, { value: "ok", label: "保存", cls: "primary" }];
 
-  async function editEvent(ev) {
-    const opts = ["once", "daily", "weekdays", "weekly"]
-      .map((v) => `<option value="${v}" ${ev.repeat === v ? "selected" : ""}>${{ once: "仅这一天", ...REPEAT_LABEL }[v]}</option>`).join("");
-    const r = await openDialog("编辑日程", `
-      <label>标题<input type="text" id="eTitle" value="${esc(ev.title)}" /></label>
-      <div class="two"><label>开始<input type="time" id="eStart" value="${ev.start}" /></label>
-      <label>结束<input type="time" id="eEnd" value="${ev.end || ""}" /></label></div>
-      <label>备注<input type="text" id="eNote" value="${esc(ev.note)}" /></label>
-      <label>重复<select id="eRepeat">${opts}</select></label>`, SAVE_BTNS);
-    if (r !== "ok") return;
-    const title = $("#eTitle").value.trim();
-    if (!title || !$("#eStart").value) return;
-    ev = state.events.find((x) => x.id === ev.id);
-    if (!ev) return;
-    Object.assign(ev, { title, start: $("#eStart").value, end: $("#eEnd").value, note: $("#eNote").value.trim(), repeat: $("#eRepeat").value });
-    if (ev.repeat === "once") ev.date = selected;
-    save(); render();
-  }
-
   async function deleteEvent(ev) {
     if (!ev.repeat || ev.repeat === "once") {
       ev.deletedAt = new Date().toISOString();
@@ -341,49 +291,6 @@
     if (e.key === "ArrowLeft") setDay(addDays(selected, -1));
     if (e.key === "ArrowRight") setDay(addDays(selected, 1));
     if (e.key === "t" || e.key === "T") setDay(todayStr());
-  });
-
-  // color picker
-  $("#sColors").innerHTML = COLORS.map((c) => `<button type="button" data-color="${c}" style="background:${c}" class="${c === pickedColor ? "on" : ""}" aria-label="颜色"></button>`).join("");
-  $("#sColors").onclick = (e) => {
-    const b = e.target.closest("[data-color]"); if (!b) return;
-    pickedColor = b.dataset.color;
-    $("#sColors").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
-  };
-
-  // add schedule
-  $("#schedForm").onsubmit = (e) => {
-    e.preventDefault();
-    const title = $("#sTitle").value.trim();
-    if (!title) return;
-    let start = $("#sStart").value, end = $("#sEnd").value;
-    if (end && toMin(end) < toMin(start)) [start, end] = [end, start];
-    state.events.push({
-      id: uid(), title, start, end, note: $("#sNote").value.trim(), color: pickedColor,
-      repeat: $("#sRepeat").value, date: selected, skip: [], doneOn: [],
-    });
-    save();
-    // next slot suggestion
-    if (end) {
-      $("#sStart").value = end;
-      const m = Math.min(toMin(end) + 60, 23 * 60 + 59);
-      $("#sEnd").value = `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
-    }
-    $("#sTitle").value = ""; $("#sNote").value = "";
-    $("#sTitle").focus();
-    render();
-  };
-
-  $("#timeline").addEventListener("click", (e) => {
-    const t = e.target;
-    const find = (id) => state.events.find((x) => x.id === id);
-    if (t.dataset.evDone) {
-      const ev = find(t.dataset.evDone);
-      ev.doneOn ||= [];
-      ev.doneOn = t.checked ? [...ev.doneOn, selected] : ev.doneOn.filter((d) => d !== selected);
-      save(); render();
-    } else if (t.dataset.evEdit) editEvent(find(t.dataset.evEdit));
-    else if (t.dataset.evDel) deleteEvent(find(t.dataset.evDel));
   });
 
   // add todo
@@ -605,7 +512,15 @@
     commit() { save(); render(); },
     toast: (msg, undo) => toast(msg, undo),
     trash: (key, action) => applyTrash(key, action),
-    util: { esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay },
+    deleteEvent: (ev) => deleteEvent(ev),
+    selected: () => selected,
+    profile: () => profile,
+    setProfile(p) { profile = p; render(); },
+    saveProfile(patch) {
+      profile = { ...(profile || {}), ...patch };
+      if (window.PlannerCloud?.saveProfile) window.PlannerCloud.saveProfile(patch); else render();
+    },
+    util: { DAY_START, lmin, evEnd, toMin, MOODS, esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay },
   };
 
   render();

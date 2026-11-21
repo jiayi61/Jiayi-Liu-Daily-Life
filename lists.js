@@ -169,6 +169,8 @@
       if (note) { L.push("笔记："); L.push(note); }
       L.push("");
     }
+    const time = P.timeSummary?.(from, to) || [];
+    if (time.length) { L.push(...time, ""); }
     const next = addDays(to, 7);
     const upcoming = liveTodos().filter((t) => !t.done && dueDay(t) > to && dueDay(t) <= next).sort((a, b) => a.due.localeCompare(b.due));
     const overdue = liveTodos().filter((t) => !t.done && dueDay(t) < from).sort((a, b) => a.due.localeCompare(b.due));

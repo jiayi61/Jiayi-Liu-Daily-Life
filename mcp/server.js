@@ -37,6 +37,13 @@ const PRIO = { high: 2, normal: 1, low: 0 };
 const PRIO_NAME = ["low", "normal", "high"];
 const parseYmd = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+// a planner day runs 05:00 → 05:00: 01:30 sorts after 23:00 on the same page
+const DAY_START = 5 * 60;
+const lmin = (t) => { const m = toMin(t); return m < DAY_START ? m + 1440 : m; };
+async function categories() {
+  const p = await userRef.collection("meta").doc("profile").get();
+  return (p.exists && p.data().categories) || [];
+}
 
 function normDue(due) {
   // accepts "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (local time)
@@ -168,7 +175,7 @@ server.tool(
 
 server.tool(
   "add_schedule_item",
-  "Add a time block to the planner's daily schedule (classes, meetings, routines). Times are local HH:MM.",
+  "Add a time block to the planner's daily schedule (classes, meetings, routines). Times are local HH:MM. A planner day runs 05:00 → 05:00 the next morning: something at 01:00 after a late night belongs to the previous date's page (use that date, start 01:00). Pick a `tag` from list_tags when one fits.",
   {
     title: z.string().min(1),
     date: z.string().describe("YYYY-MM-DD; for repeating items this is the first day"),
@@ -176,13 +183,21 @@ server.tool(
     end: z.string().optional().describe("HH:MM"),
     note: z.string().optional().describe("Place or note"),
     repeat: z.enum(["once", "daily", "weekdays", "weekly"]).default("once"),
+    tag: z.string().optional().describe("Schedule tag/category label or id, e.g. 学习 / 会议 (see list_tags)"),
   },
-  async ({ title, date, start, end, note, repeat }) => {
+  async ({ title, date, start, end, note, repeat, tag }) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(start) || (end && !/^\d{2}:\d{2}$/.test(end))) {
       throw new Error("Use date YYYY-MM-DD and times HH:MM.");
     }
     const id = uid();
-    const ev = { id, title: title.trim(), date, start, end: end || "", note: note?.trim() || "", color: "#5b86b0", repeat, skip: [], doneOn: [] };
+    let cat = "", color = "#5b86b0";
+    if (tag) {
+      const cats = await categories();
+      const c = cats.find((x) => x.id === tag || x.label === tag.trim()) || cats.find((x) => x.label.includes(tag.trim()));
+      if (!c) throw new Error(`No tag "${tag}". Tags: ${cats.map((x) => x.label).join(", ") || "(none set up yet)"}`);
+      cat = c.id; color = c.color;
+    }
+    const ev = { id, title: title.trim(), date, start, end: end || "", note: note?.trim() || "", color, cat, repeat, skip: [], doneOn: [] };
     await events.doc(id).set({ ...ev, updatedAt: FieldValue.serverTimestamp() });
     return text(`Added to schedule: ${date} ${start}${end ? "–" + end : ""} ${ev.title}${repeat !== "once" ? ` (repeats ${repeat})` : ""}  id=${id}`);
   }
@@ -191,15 +206,17 @@ server.tool(
 server.tool(
   "list_schedule",
   "Show the schedule for one day (including repeating items) plus the to-dos due that day.",
-  { date: z.string().optional().describe("YYYY-MM-DD, default today") },
+  { date: z.string().optional().describe("YYYY-MM-DD, default today (before 5 am: yesterday)") },
   async ({ date }) => {
-    const day = date || ymd(new Date());
+    const day = date || ymd(new Date(Date.now() - DAY_START * 60000)); // before 5 am it is still "yesterday"
     const evs = (await liveDocs(events))
-      .filter((e) => occursOn(e, day)).sort((a, b) => toMin(a.start) - toMin(b.start));
+      .filter((e) => occursOn(e, day)).sort((a, b) => lmin(a.start) - lmin(b.start));
+    const cats = await categories();
+    const tagOf = (e) => cats.find((c) => c.id === e.cat);
     const due = (await liveDocs(todos))
       .filter((t) => t.due.slice(0, 10) === day).sort((a, b) => a.due.localeCompare(b.due));
     const lines = [header(), `Schedule for ${day} ${WEEK[parseYmd(day).getDay()]}:`];
-    lines.push(...(evs.length ? evs.map((e) => `- [${(e.doneOn || []).includes(day) ? "x" : " "}] ${e.start}${e.end ? "–" + e.end : ""} ${e.title}${e.note ? ` (${e.note})` : ""}${e.repeat && e.repeat !== "once" ? ` ↻${e.repeat}` : ""}  id=${e.id}`) : ["(nothing scheduled)"]));
+    lines.push(...(evs.length ? evs.map((e) => `- [${(e.doneOn || []).includes(day) ? "x" : " "}] ${e.start}${e.end ? "–" + e.end : ""} ${e.title}${tagOf(e) ? ` [${tagOf(e).label}]` : ""}${e.note ? ` (${e.note})` : ""}${e.repeat && e.repeat !== "once" ? ` ↻${e.repeat}` : ""}  id=${e.id}`) : ["(nothing scheduled)"]));
     lines.push("", "To-dos due this day:", ...(due.length ? due.map(fmtTodo) : ["(none)"]));
     return text(lines.join("\n"));
   }
@@ -217,6 +234,16 @@ server.tool(
     if (only_date) await ref.update({ skip: FieldValue.arrayUnion(only_date), [`skipDeleted.${only_date}`]: at, updatedAt: FieldValue.serverTimestamp() });
     else await ref.update({ deletedAt: at, updatedAt: FieldValue.serverTimestamp() });
     return text(`Moved to trash: ${snap.data().title}${only_date ? ` on ${only_date}` : ""} (restorable from 🗑 垃圾箱 on the website).`);
+  }
+);
+
+server.tool(
+  "list_tags",
+  "List the schedule tags (categories) the user has set up, in priority order.",
+  {},
+  async () => {
+    const cats = await categories();
+    return text(cats.length ? cats.map((c, i) => `${i + 1}. ${c.emoji} ${c.label}  id=${c.id}`).join("\n") : "No tags set up yet (the website asks on first login).");
   }
 );
 

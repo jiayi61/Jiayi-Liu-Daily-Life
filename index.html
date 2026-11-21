@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body class="locked">
   <div class="book">
@@ -75,30 +75,13 @@
       <section class="card" id="scheduleCard">
         <div class="card-head">
           <h2>🕘 今日日程 <small>Schedule</small></h2>
+          <div class="dc-tools">
+            <button type="button" class="ghost small" id="tagsBtn" title="管理日程标签">🏷 标签</button>
+            <button type="button" class="primary small" id="newEvBtn">＋ 新日程</button>
+          </div>
         </div>
-
-        <form id="schedForm" class="add-form">
-          <div class="row">
-            <input type="time" id="sStart" required value="09:00" />
-            <span class="dash">—</span>
-            <input type="time" id="sEnd" value="10:00" />
-            <input type="text" id="sTitle" placeholder="安排什么？例如：APMA3101 上课" required />
-          </div>
-          <div class="row">
-            <select id="sRepeat" title="重复">
-              <option value="once">仅这一天</option>
-              <option value="daily">每天</option>
-              <option value="weekdays">工作日 (一至五)</option>
-              <option value="weekly">每周这一天</option>
-            </select>
-            <div class="colors" id="sColors"></div>
-            <input type="text" id="sNote" placeholder="地点 / 备注（可选）" />
-            <button type="submit" class="primary">＋ 加入日程</button>
-          </div>
-        </form>
-
-        <ol class="timeline" id="timeline"></ol>
-        <p class="empty" id="schedEmpty">这一天还没有安排，在上面添加第一项吧 ✍️</p>
+        <p class="dc-hint">点空白处或拖一段新建；拖动日程改时间，拖底边改时长（手机上先长按）。</p>
+        <div class="dc" id="dayCal"></div>
       </section>
 
       <!-- ===== Todos ===== -->
@@ -131,6 +114,15 @@
 
         <div id="todoGroups"></div>
         <p class="empty" id="todoEmpty">没有待办事项，享受这一天 ☕️</p>
+      </section>
+
+      <!-- ===== Weekly time ===== -->
+      <section class="card time-card" id="timeCard">
+        <div class="card-head">
+          <h2>⏱ 这周的时间 <small>Time</small></h2>
+          <span class="tc-range" id="tcRange"></span>
+        </div>
+        <div id="timeStats"></div>
       </section>
 
       <!-- ===== Notes ===== -->
@@ -191,9 +183,10 @@
     </div>
   </aside>
 
-  <script src="app.js?v=7"></script>
-  <script src="lists.js?v=7"></script>
-  <script type="module" src="cloud.js?v=7"></script>
+  <script src="app.js?v=8"></script>
+  <script src="daycal.js?v=8"></script>
+  <script src="lists.js?v=8"></script>
+  <script type="module" src="cloud.js?v=8"></script>
   <script>
     if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
   </script>

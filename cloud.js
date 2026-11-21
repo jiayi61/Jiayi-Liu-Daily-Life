@@ -79,7 +79,7 @@ async function main() {
   let timer = null;
   // mirror of what Firestore has, per collection: Map<id, cleanedData>
   let mirror = emptyMirror();
-  let profile = null; // { nickname } from users/{uid}/meta/profile
+  let profile = null; // { nickname, role, categories[] } from users/{uid}/meta/profile
 
   const col = (name) => fs.collection(db, "users", user.uid, name);
 
@@ -108,7 +108,19 @@ async function main() {
     catch (e) { console.warn("profile", e); return; } // offline with no cache: just use the Google name for now
     if (user?.uid !== uidAtStart) return;
     applyName(); if (ready) status("ok");
-    if (!profile?.nickname) askProfile(false);
+    Planner.setProfile(profile);
+    // first visit (or before tags existed): ask name + what they do, and suggest tags
+    if (!profile?.nickname || !profile?.categories) {
+      while (document.getElementById("editDlg").open) await new Promise((r) => setTimeout(r, 300));
+      const res = await Planner.onboard(profile, user.displayName || "");
+      if (res && user?.uid === uidAtStart) saveProfile(res);
+    }
+  }
+  function saveProfile(patch) {
+    profile = { ...(profile || {}), ...patch };
+    applyName(); status(ready ? "ok" : "saving");
+    Planner.setProfile(profile);
+    fs.setDoc(profileRef(), { ...profile, updatedAt: fs.serverTimestamp() }).catch((e) => { console.error(e); status("err"); });
   }
   async function askProfile(editing) {
     if (document.getElementById("editDlg").open) return;
@@ -123,9 +135,7 @@ async function main() {
     if (r !== "ok" || !user) return;
     const k = document.getElementById("pfNick").value.trim() || gName.split(" ")[0];
     if (!k) return;
-    profile = { nickname: k };
-    applyName(); status(ready ? "ok" : "saving");
-    fs.setDoc(profileRef(), { ...profile, updatedAt: fs.serverTimestamp() }).catch((e) => { console.error(e); status("err"); });
+    saveProfile({ nickname: k });
   }
 
   /* ---------- state <-> documents ---------- */
@@ -188,6 +198,7 @@ async function main() {
   }
 
   window.PlannerCloud = {
+    saveProfile: (patch) => user && saveProfile(patch),
     queue() {
       if (!user || !ready) return;
       clearTimeout(timer);
@@ -322,7 +333,7 @@ async function main() {
 
   auth.onAuthStateChanged(a, (u) => {
     unsubs.forEach((x) => x()); unsubs = [];
-    user = u; ready = false; profile = null;
+    user = u; ready = false; profile = null; Planner.setProfile(null);
     mirror = emptyMirror();
     if (!u) { showLogin(); return; }
     if (ALLOWED_EMAILS.length && !ALLOWED_EMAILS.includes(u.email)) {
