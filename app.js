@@ -43,7 +43,10 @@
     } catch (_) { /* ignore */ }
     return blank();
   }
-  function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  function save() {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    if (window.PlannerCloud) window.PlannerCloud.queue();
+  }
 
   /* ---------- schedule logic ---------- */
   function occursOn(ev, day) {
@@ -268,6 +271,8 @@
     if (r !== "ok") return;
     const title = $("#eTitle").value.trim();
     if (!title || !$("#eStart").value) return;
+    ev = state.events.find((x) => x.id === ev.id);
+    if (!ev) return;
     Object.assign(ev, { title, start: $("#eStart").value, end: $("#eEnd").value, note: $("#eNote").value.trim(), repeat: $("#eRepeat").value });
     if (ev.repeat === "once") ev.date = selected;
     save(); render();
@@ -282,6 +287,8 @@
         { value: "one", label: "只删这一天" },
         { value: "all", label: "全部删除", cls: "primary" },
       ]);
+      ev = state.events.find((x) => x.id === ev.id);
+      if (!ev) return;
       if (r === "one") (ev.skip ||= []).push(selected);
       else if (r === "all") state.events = state.events.filter((e) => e !== ev);
       else return;
@@ -302,6 +309,8 @@
     if (r !== "ok") return;
     const title = $("#xTitle").value.trim();
     if (!title || !$("#xDate").value) return;
+    t = state.todos.find((x) => x.id === t.id);
+    if (!t) return;
     Object.assign(t, { title, due: `${$("#xDate").value}T${$("#xTime").value || "23:59"}`, prio: Number($("#xPrio").value), tag: $("#xTag").value.trim() });
     save(); render();
   }
@@ -459,6 +468,17 @@
     lastToday = t;
     if (!$("#editDlg").open) { renderDate(); renderWeek(); renderSchedule(); renderTodos(); renderSummary(); }
   }, 30000);
+
+  // bridge used by cloud.js
+  window.Planner = {
+    get: () => state,
+    replace(next) {
+      state = next ? { ...blank(), ...next } : blank();
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      render();
+    },
+    dialog: openDialog,
+  };
 
   render();
 })();

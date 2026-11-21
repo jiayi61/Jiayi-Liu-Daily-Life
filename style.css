@@ -269,3 +269,28 @@ dialog::backdrop { background: rgba(40, 30, 20, .35); }
   .quote { margin: 0; }
   .week { gap: 3px; }
 }
+
+/* ---------- Cloud sync ---------- */
+.sync-box { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+.sync { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--paper-2); color: var(--ink-soft); white-space: nowrap; }
+.sync.ok { background: #e6f0e8; color: var(--green); }
+.sync.saving { background: #fbf0d9; color: #9a6f10; }
+.sync.offline { background: #eef2f6; color: #5a7085; }
+.sync.err { background: #f9e1de; color: var(--warn); }
+.who { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); max-width: 180px; }
+.who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who img { width: 24px; height: 24px; border-radius: 50%; }
+.primary.small { padding: 6px 12px; font-size: 13px; border-radius: 999px; }
+#editBody input[type="email"], #editBody input[type="password"] {
+  border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 10px; outline: none;
+}
+#editBody .hint { font-size: 12px; color: var(--ink-soft); margin: 0; }
+
+/* ---------- Home-screen app ---------- */
+@media (display-mode: standalone) {
+  body { padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+}
+@media (max-width: 860px) {
+  body { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  .sync-box { margin-left: 0; justify-content: flex-start; width: 100%; }
+}

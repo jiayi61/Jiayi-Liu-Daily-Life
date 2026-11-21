@@ -2,10 +2,17 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Jiayi's Daily Planner · 每日日程本</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📒</text></svg>" />
-  <link rel="stylesheet" href="style.css" />
+  <meta name="theme-color" content="#efe7d8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="日程本" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
 <body>
   <div class="book">
@@ -18,6 +25,7 @@
           <p class="sub">每日日程本 · 一天一页</p>
         </div>
       </div>
+      <div class="sync-box" id="syncBox"></div>
       <div class="top-actions">
         <button class="ghost" id="exportBtn" title="下载备份文件">⬇︎ 备份</button>
         <label class="ghost" title="从备份文件恢复">⬆︎ 恢复<input type="file" id="importInput" accept="application/json" hidden /></label>
@@ -134,7 +142,7 @@
     </main>
 
     <footer class="foot">
-      数据保存在本浏览器中（localStorage），换设备前请用「备份 / 恢复」。
+      登录后数据保存在云端，手机、电脑自动同步；也可以随时「备份」下载一份到本地。
     </footer>
   </div>
 
@@ -150,6 +158,10 @@
     </form>
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
+  <script type="module" src="cloud.js?v=2"></script>
+  <script>
+    if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+  </script>
 </body>
 </html>
