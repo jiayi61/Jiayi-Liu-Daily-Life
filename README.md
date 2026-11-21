@@ -58,3 +58,6 @@ users/{uid}/events/{id}   title, start, end, note, color, repeat, date, skip[], 
 users/{uid}/days/{日期}    note, mood
 ```
 `dueAt` 是真正的时间戳字段，以后可以直接用它查询「1 小时内到期的待办」来发推送。
+
+## 和 Claude 聊天时直接记待办
+`mcp/` 文件夹里是一个 MCP 工具，装好后在 Claude 桌面应用里说"帮我记一下周五前交作业"，就会直接写进日程本。安装方法见 [mcp/README.md](mcp/README.md)。

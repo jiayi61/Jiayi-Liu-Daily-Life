@@ -1,0 +1,13 @@
+{
+  "name": "daily-planner-mcp",
+  "version": "1.0.0",
+  "description": "MCP server that lets Claude read and write the Daily Planner (Firestore)",
+  "type": "module",
+  "main": "server.js",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "firebase-admin": "^12.7.0",
+    "zod": "^3.24.0"
+  }
+}
