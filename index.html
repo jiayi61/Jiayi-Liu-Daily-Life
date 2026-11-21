@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jiayi's Daily Planner · 每日日程本</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📒</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="book">
+    <!-- ===== Header ===== -->
+    <header class="top">
+      <div class="brand">
+        <span class="brand-mark">📒</span>
+        <div>
+          <h1>Jiayi's Daily Planner</h1>
+          <p class="sub">每日日程本 · 一天一页</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="ghost" id="exportBtn" title="下载备份文件">⬇︎ 备份</button>
+        <label class="ghost" title="从备份文件恢复">⬆︎ 恢复<input type="file" id="importInput" accept="application/json" hidden /></label>
+      </div>
+    </header>
+
+    <!-- ===== Date bar ===== -->
+    <section class="datebar">
+      <button class="nav" id="prevDay" aria-label="前一天">‹</button>
+      <div class="date-main">
+        <div class="date-big" id="dateBig"></div>
+        <div class="date-small" id="dateSmall"></div>
+      </div>
+      <button class="nav" id="nextDay" aria-label="后一天">›</button>
+      <div class="date-tools">
+        <button class="pill" id="todayBtn">回到今天</button>
+        <input type="date" id="datePicker" />
+      </div>
+    </section>
+
+    <!-- ===== Week strip ===== -->
+    <nav class="week" id="weekStrip"></nav>
+
+    <!-- ===== Summary ===== -->
+    <section class="summary">
+      <div class="ring-wrap">
+        <svg viewBox="0 0 120 120" class="ring">
+          <circle cx="60" cy="60" r="50" class="ring-bg" />
+          <circle cx="60" cy="60" r="50" class="ring-fg" id="ringFg" />
+        </svg>
+        <div class="ring-text"><b id="ringPct">0%</b><span>今日完成</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="statSched">0</b><span>日程</span></div>
+        <div class="stat"><b id="statDue">0</b><span>当日截止</span></div>
+        <div class="stat warn"><b id="statOver">0</b><span>已逾期</span></div>
+        <div class="stat"><b id="statOpen">0</b><span>全部未完成</span></div>
+      </div>
+      <p class="quote" id="quote"></p>
+    </section>
+
+    <main class="grid">
+      <!-- ===== Schedule ===== -->
+      <section class="card" id="scheduleCard">
+        <div class="card-head">
+          <h2>🕘 今日日程 <small>Schedule</small></h2>
+        </div>
+
+        <form id="schedForm" class="add-form">
+          <div class="row">
+            <input type="time" id="sStart" required value="09:00" />
+            <span class="dash">—</span>
+            <input type="time" id="sEnd" value="10:00" />
+            <input type="text" id="sTitle" placeholder="安排什么？例如：APMA3101 上课" required />
+          </div>
+          <div class="row">
+            <select id="sRepeat" title="重复">
+              <option value="once">仅这一天</option>
+              <option value="daily">每天</option>
+              <option value="weekdays">工作日 (一至五)</option>
+              <option value="weekly">每周这一天</option>
+            </select>
+            <div class="colors" id="sColors"></div>
+            <input type="text" id="sNote" placeholder="地点 / 备注（可选）" />
+            <button type="submit" class="primary">＋ 加入日程</button>
+          </div>
+        </form>
+
+        <ol class="timeline" id="timeline"></ol>
+        <p class="empty" id="schedEmpty">这一天还没有安排，在上面添加第一项吧 ✍️</p>
+      </section>
+
+      <!-- ===== Todos ===== -->
+      <section class="card" id="todoCard">
+        <div class="card-head">
+          <h2>✅ 待办清单 <small>To-do</small></h2>
+          <div class="filters" id="todoFilters">
+            <button data-f="all" class="on">全部</button>
+            <button data-f="day">只看当天</button>
+          </div>
+        </div>
+
+        <form id="todoForm" class="add-form">
+          <div class="row">
+            <input type="text" id="tTitle" placeholder="需要做的事情…" required />
+          </div>
+          <div class="row">
+            <label class="lbl">截止</label>
+            <input type="date" id="tDate" required />
+            <input type="time" id="tTime" value="23:59" />
+            <select id="tPrio" title="优先级">
+              <option value="2">🔴 重要</option>
+              <option value="1" selected>🟡 普通</option>
+              <option value="0">🟢 随意</option>
+            </select>
+            <input type="text" id="tTag" placeholder="标签（可选）" class="short" />
+            <button type="submit" class="primary">＋ 添加</button>
+          </div>
+        </form>
+
+        <div id="todoGroups"></div>
+        <p class="empty" id="todoEmpty">没有待办事项，享受这一天 ☕️</p>
+      </section>
+
+      <!-- ===== Notes ===== -->
+      <section class="card notes-card">
+        <div class="card-head">
+          <h2>📝 今日笔记 <small>Notes</small></h2>
+          <div class="moods" id="moods"></div>
+        </div>
+        <textarea id="noteArea" placeholder="今天的想法、感受、复盘……（自动保存）"></textarea>
+        <p class="saved" id="savedHint"></p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      数据保存在本浏览器中（localStorage），换设备前请用「备份 / 恢复」。
+    </footer>
+  </div>
+
+  <!-- Edit dialog -->
+  <dialog id="editDlg">
+    <form method="dialog" id="editForm">
+      <h3 id="editTitle">编辑</h3>
+      <div id="editBody"></div>
+      <div class="dlg-actions">
+        <button value="cancel" class="ghost">取消</button>
+        <button value="ok" class="primary" id="editOk">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
