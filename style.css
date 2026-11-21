@@ -470,3 +470,19 @@ body.locked { overflow: hidden; }
 .tc-num em.down { color: var(--warn); }
 .tc-note { font-size: 11px; color: var(--ink-soft); margin: 10px 0 0; }
 .time-card { grid-column: 1 / -1; }
+
+/* ---------- subtasks + optional deadline ---------- */
+.inline-chk { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 5px; font-size: 13px; color: var(--ink-soft); white-space: nowrap; cursor: pointer; }
+.inline-chk input { margin: 0; }
+#tDate:disabled, #tTime:disabled { opacity: .4; }
+.todo .prog { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.todo .prog i { width: 54px; height: 6px; border-radius: 3px; background: var(--paper-2); overflow: hidden; display: inline-block; }
+.todo .prog b { display: block; height: 100%; background: var(--green); border-radius: 3px; transition: width .25s; }
+.subs { list-style: none; margin: 6px 0 0; padding: 0 0 0 4px; border-left: 2px solid var(--line); }
+.subs li { display: flex; align-items: center; gap: 7px; padding: 3px 0 3px 8px; font-size: 14px; }
+.subs li:hover .icon-btn { opacity: 1; }
+.chk.sm { width: 16px; height: 16px; border-radius: 5px; border-width: 1.5px; }
+.sub-t { flex: 1; min-width: 0; word-break: break-word; cursor: text; }
+.subs li.is-done .sub-t { text-decoration: line-through; color: var(--ink-soft); }
+.sub-add input { flex: 1; border: 1px dashed var(--line); background: #fff; border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 13px; outline: none; }
+.sub-add input:focus { border-color: var(--accent); }

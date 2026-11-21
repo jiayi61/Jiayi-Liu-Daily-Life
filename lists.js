@@ -136,6 +136,11 @@
   const weekStart = (day) => { const dow = (parseYmd(day).getDay() + 6) % 7; return addDays(day, -dow); }; // Monday
   const short = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const doneDay = (t) => (t.doneAt || "").slice(0, 10);
+  // " — 进度 1/2：✅小任务1 ⬜小任务2"
+  const subLine = (t) => {
+    const s = t.subs || []; if (!s.length) return "";
+    return ` — 进度 ${s.filter((x) => x.done).length}/${s.length}：${s.map((x) => `${x.done ? "✅" : "⬜"}${x.title}`).join(" ")}`;
+  };
 
   function buildPack(from, to) {
     const s = P.get();
@@ -160,10 +165,10 @@
       }
       if (tds.length) {
         L.push("待办：");
-        tds.sort((a, b) => a.due.localeCompare(b.due)).forEach((t) => {
-          const when = `截止 ${short(t.due)} ${t.due.slice(11)}`;
-          const st = t.done ? (doneDay(t) === dueDay(t) ? "按时完成" : `${short(doneDay(t))} 完成`) : (new Date(t.due) < new Date() ? "没完成" : "还没到截止");
-          L.push(`- ${t.done ? "✅" : "⬜"} ${t.title}${t.tag ? ` #${t.tag}` : ""}（${when}，${st}）`);
+        tds.sort((a, b) => (a.due || "~").localeCompare(b.due || "~")).forEach((t) => {
+          const when = t.due ? `截止 ${short(t.due)} ${t.due.slice(11)}` : "没有截止日期";
+          const st = t.done ? (!t.due ? "完成" : doneDay(t) === dueDay(t) ? "按时完成" : `${short(doneDay(t))} 完成`) : (new Date(t.due) < new Date() ? "没完成" : "还没到截止");
+          L.push(`- ${t.done ? "✅" : "⬜"} ${t.title}${t.tag ? ` #${t.tag}` : ""}（${when}，${st}）${subLine(t)}`);
         });
       }
       if (note) { L.push("笔记："); L.push(note); }
@@ -172,13 +177,19 @@
     const time = P.timeSummary?.(from, to) || [];
     if (time.length) { L.push(...time, ""); }
     const next = addDays(to, 7);
-    const upcoming = liveTodos().filter((t) => !t.done && dueDay(t) > to && dueDay(t) <= next).sort((a, b) => a.due.localeCompare(b.due));
-    const overdue = liveTodos().filter((t) => !t.done && dueDay(t) < from).sort((a, b) => a.due.localeCompare(b.due));
+    const upcoming = liveTodos().filter((t) => !t.done && t.due && dueDay(t) > to && dueDay(t) <= next).sort((a, b) => a.due.localeCompare(b.due));
+    const overdue = liveTodos().filter((t) => !t.done && t.due && dueDay(t) < from).sort((a, b) => a.due.localeCompare(b.due));
     if (upcoming.length || overdue.length) {
       L.push("【接下来 7 天要截止的】");
-      upcoming.forEach((t) => L.push(`- ${t.title}（截止 ${short(t.due)} ${t.due.slice(11)}）`));
-      overdue.forEach((t) => L.push(`- ${t.title}（早就过了截止 ${short(t.due)}，还没完成）`));
+      upcoming.forEach((t) => L.push(`- ${t.title}（截止 ${short(t.due)} ${t.due.slice(11)}）${subLine(t)}`));
+      overdue.forEach((t) => L.push(`- ${t.title}（早就过了截止 ${short(t.due)}，还没完成）${subLine(t)}`));
       if (!upcoming.length) L.push("- （无）");
+      L.push("");
+    }
+    const someday = liveTodos().filter((t) => !t.done && !t.due);
+    if (someday.length) {
+      L.push("【没有截止日期、还在进行的事】");
+      someday.forEach((t) => L.push(`- ${t.title}${subLine(t)}`));
       L.push("");
     }
     const known = items().filter((x) => x.date >= from && x.date <= to);

@@ -70,10 +70,13 @@
   const isEventDone = (ev, day) => (ev.doneOn || []).includes(day);
 
   /* ---------- todo logic ---------- */
-  const dueDate = (t) => new Date(t.due);
-  const dueDay = (t) => t.due.slice(0, 10);
+  // the deadline is optional: t.due is "YYYY-MM-DDTHH:MM" or ""
+  const dueDate = (t) => (t.due ? new Date(t.due) : null);
+  const dueDay = (t) => (t.due || "").slice(0, 10);
+  const isLate = (t, now = Date.now()) => !!t.due && !t.done && dueDate(t) < now;
 
   function leftText(t) {
+    if (!t.due) return null;
     let diff = dueDate(t) - Date.now();
     const late = diff < 0;
     diff = Math.abs(diff);
@@ -86,6 +89,7 @@
   }
 
   function fmtDue(t) {
+    if (!t.due) return "";
     const day = dueDay(t);
     const time = t.due.slice(11, 16);
     const today = todayStr();
@@ -140,19 +144,43 @@
   // the day calendar lives in daycal.js
   function renderSchedule() { window.Planner?.renderDay?.(selected); }
 
+  // subtasks: t.subs = [{ id, title, done }]; progress = share of ticked subtasks
+  let addingSubFor = null; // to-do id whose "add subtask" box is open
+  const subs = (t) => t.subs || [];
+  const progress = (t) => { const n = subs(t).length; return n ? subs(t).filter((x) => x.done).length / n : null; };
+
+  function subsHtml(t) {
+    const list = subs(t);
+    const adding = addingSubFor === t.id;
+    if (!list.length && !adding) return "";
+    if (t.done && !adding) return "";
+    return `<ul class="subs">${list.map((x) => `
+      <li class="${x.done ? "is-done" : ""}">
+        <input type="checkbox" class="chk sm" data-sub-done="${t.id}:${x.id}" ${x.done ? "checked" : ""} aria-label="完成" />
+        <span class="sub-t" data-sub-edit="${t.id}:${x.id}" title="点击改名">${esc(x.title)}</span>
+        <button class="icon-btn" data-sub-del="${t.id}:${x.id}" title="删除小任务">✕</button>
+      </li>`).join("")}
+      ${adding ? `<li class="sub-add"><input type="text" data-sub-input="${t.id}" placeholder="小任务，回车添加；Esc 结束" /></li>` : ""}
+    </ul>`;
+  }
+
   function todoItem(t) {
     const left = t.done ? null : leftText(t);
+    const p = progress(t);
     return `<li class="todo ${t.done ? "is-done" : ""}" data-id="${t.id}">
       <input type="checkbox" class="chk" data-todo-done="${t.id}" ${t.done ? "checked" : ""} aria-label="完成" />
       <span class="prio p${t.prio}"></span>
       <div class="txt">
         <div class="ttl">${esc(t.title)}</div>
         <div class="meta">
-          <span class="due">⏰ ${fmtDue(t)}</span>
+          ${t.due ? `<span class="due">⏰ ${fmtDue(t)}</span>` : ""}
           ${left ? `<span class="left ${left.cls}">${left.text}</span>` : ""}
           ${t.tag ? `<span class="tag"># ${esc(t.tag)}</span>` : ""}
+          ${p != null ? `<span class="prog" title="${subs(t).filter((x) => x.done).length}/${subs(t).length} 个小任务完成"><i><b style="width:${Math.round(p * 100)}%"></b></i>${Math.round(p * 100)}%</span>` : ""}
         </div>
+        ${subsHtml(t)}
       </div>
+      <button class="icon-btn" data-sub-new="${t.id}" title="拆成小任务">＋</button>
       <button class="icon-btn" data-todo-edit="${t.id}" title="编辑">✎</button>
       <button class="icon-btn" data-todo-del="${t.id}" title="删除">✕</button>
     </li>`;
@@ -162,9 +190,11 @@
     const now = Date.now();
     const byDue = (a, b) => dueDate(a) - dueDate(b) || b.prio - a.prio;
     const open = liveTodos().filter((t) => !t.done);
-    const over = open.filter((t) => dueDate(t) < now).sort(byDue);
-    const onDay = open.filter((t) => dueDay(t) === selected && dueDate(t) >= now).sort(byDue);
-    const later = open.filter((t) => dueDay(t) !== selected && dueDate(t) >= now).sort(byDue);
+    const dated = open.filter((t) => t.due);
+    const over = dated.filter((t) => dueDate(t) < now).sort(byDue);
+    const onDay = dated.filter((t) => dueDay(t) === selected && dueDate(t) >= now).sort(byDue);
+    const later = dated.filter((t) => dueDay(t) !== selected && dueDate(t) >= now).sort(byDue);
+    const someday = open.filter((t) => !t.due).sort((a, b) => b.prio - a.prio || (a.createdAt || "").localeCompare(b.createdAt || ""));
     const done = liveTodos()
       .filter((t) => t.done && ((t.doneAt || "").slice(0, 10) === selected || dueDay(t) === selected))
       .sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
@@ -179,6 +209,7 @@
           ["over", "⚠️ 已逾期", over],
           ["today", selected === todayStr() ? "📌 今天截止" : "📌 当天截止", onDay],
           ["later", "🗓 即将到来", later],
+          ["someday", "📝 没有截止日期", someday],
           ["done", "✔️ 当天完成", done],
         ];
 
@@ -191,7 +222,10 @@
         <div class="group-h" ${cls === "done" ? 'data-toggle-done="1"' : ""}>${label} <span class="n">${items.length}</span>${cls === "done" ? (doneCollapsed ? " ▸" : " ▾") : ""}</div>
         <ul>${items.map(todoItem).join("")}</ul></div>`;
     }
+    const typing = document.activeElement?.dataset?.subInput ? document.activeElement.value : null;
     $("#todoGroups").innerHTML = html;
+    const box = addingSubFor && $(`[data-sub-input="${addingSubFor}"]`);
+    if (box) { if (typing != null) box.value = typing; box.focus(); }
     $("#todoEmpty").hidden = count > 0;
   }
 
@@ -213,7 +247,7 @@
     $("#ringFg").style.strokeDashoffset = 314.16 * (1 - pct / 100);
     $("#statSched").textContent = evs.length;
     $("#statDue").textContent = liveTodos().filter((t) => !t.done && dueDay(t) === selected).length;
-    $("#statOver").textContent = liveTodos().filter((t) => !t.done && dueDate(t) < Date.now()).length;
+    $("#statOver").textContent = liveTodos().filter((t) => isLate(t)).length;
     $("#statOpen").textContent = liveTodos().filter((t) => !t.done).length;
     const idx = parseYmd(selected).getDate() % QUOTES.length;
     $("#quote").textContent = `“${QUOTES[idx]}”`;
@@ -261,8 +295,9 @@
   async function editTodo(t) {
     const r = await openDialog("编辑待办", `
       <label>内容<input type="text" id="xTitle" value="${esc(t.title)}" /></label>
-      <div class="two"><label>截止日期<input type="date" id="xDate" value="${dueDay(t)}" /></label>
-      <label>时间<input type="time" id="xTime" value="${t.due.slice(11, 16)}" /></label></div>
+      <label class="inline-chk"><input type="checkbox" id="xNoDue" ${t.due ? "" : "checked"} /> 不设截止日期</label>
+      <div class="two" id="xDueRow" ${t.due ? "" : "hidden"}><label>截止日期<input type="date" id="xDate" value="${dueDay(t) || selected}" /></label>
+      <label>时间<input type="time" id="xTime" value="${t.due ? t.due.slice(11, 16) : "23:59"}" /></label></div>
       <div class="two"><label>优先级<select id="xPrio">
         <option value="2" ${t.prio == 2 ? "selected" : ""}>🔴 重要</option>
         <option value="1" ${t.prio == 1 ? "selected" : ""}>🟡 普通</option>
@@ -270,10 +305,11 @@
       <label>标签<input type="text" id="xTag" value="${esc(t.tag)}" /></label></div>`, SAVE_BTNS);
     if (r !== "ok") return;
     const title = $("#xTitle").value.trim();
-    if (!title || !$("#xDate").value) return;
+    const noDue = $("#xNoDue").checked;
+    if (!title || (!noDue && !$("#xDate").value)) return;
     t = state.todos.find((x) => x.id === t.id);
     if (!t) return;
-    Object.assign(t, { title, due: `${$("#xDate").value}T${$("#xTime").value || "23:59"}`, prio: Number($("#xPrio").value), tag: $("#xTag").value.trim() });
+    Object.assign(t, { title, due: noDue ? "" : `${$("#xDate").value}T${$("#xTime").value || "23:59"}`, prio: Number($("#xPrio").value), tag: $("#xTag").value.trim() });
     save(); render();
   }
 
@@ -294,13 +330,18 @@
   });
 
   // add todo
+  const syncNoDue = () => { const off = $("#tNoDue").checked; $("#tDate").disabled = off; $("#tTime").disabled = off; };
+  $("#tNoDue").onchange = syncNoDue;
+  // the edit dialog's "no deadline" box shows/hides its date row
+  $("#editBody").addEventListener("change", (e) => { if (e.target.id === "xNoDue") $("#xDueRow").hidden = e.target.checked; });
   $("#tDate").addEventListener("change", () => { $("#tDate").dataset.touched = "1"; });
   $("#todoForm").onsubmit = (e) => {
     e.preventDefault();
     const title = $("#tTitle").value.trim();
-    if (!title || !$("#tDate").value) return;
+    const noDue = $("#tNoDue").checked;
+    if (!title || (!noDue && !$("#tDate").value)) return;
     state.todos.push({
-      id: uid(), title, due: `${$("#tDate").value}T${$("#tTime").value || "23:59"}`,
+      id: uid(), title, due: noDue ? "" : `${$("#tDate").value}T${$("#tTime").value || "23:59"}`,
       prio: Number($("#tPrio").value), tag: $("#tTag").value.trim(),
       done: false, doneAt: null, createdAt: new Date().toISOString(),
     });
@@ -323,6 +364,30 @@
       const li = t.closest(".todo");
       li.classList.add("pop");
       setTimeout(render, 280);
+    } else if (t.dataset.subNew) {
+      addingSubFor = t.dataset.subNew; renderTodos();
+    } else if (t.dataset.subDone) {
+      const [tid, sid] = t.dataset.subDone.split(":");
+      const td = find(tid), sub = td && subs(td).find((x) => x.id === sid); if (!sub) return;
+      sub.done = t.checked;
+      if (subs(td).every((x) => x.done) && !td.done) {
+        // last subtask ticked → the whole to-do is done
+        const n = new Date();
+        td.done = true; td.doneAt = `${ymd(n)}T${pad(n.getHours())}:${pad(n.getMinutes())}`;
+        if (addingSubFor === td.id) addingSubFor = null;
+        toast(`小任务全部完成，「${td.title}」已自动勾选 🎉`, () => { const x = find(tid); if (x) { x.done = false; x.doneAt = null; } });
+      } else if (!t.checked && td.done) { td.done = false; td.doneAt = null; }
+      save(); render();
+    } else if (t.dataset.subEdit) {
+      const [tid, sid] = t.dataset.subEdit.split(":");
+      renameSub(tid, sid);
+    } else if (t.dataset.subDel) {
+      const [tid, sid] = t.dataset.subDel.split(":");
+      const td = find(tid); if (!td) return;
+      const i = subs(td).findIndex((x) => x.id === sid); if (i < 0) return;
+      const [gone] = td.subs.splice(i, 1);
+      save(); render();
+      toast(`已删除小任务「${gone.title}」`, () => { const x = find(tid); if (x) (x.subs ||= []).splice(i, 0, gone); });
     } else if (t.dataset.todoEdit) editTodo(find(t.dataset.todoEdit));
     else if (t.dataset.todoDel) {
       const td = find(t.dataset.todoDel);
@@ -331,6 +396,32 @@
       toast(`已把「${td.title}」放进垃圾箱`, () => applyTrash(`t:${td.id}`, "restore"));
     } else if (t.closest("[data-toggle-done]")) { doneCollapsed = !doneCollapsed; renderTodos(); }
   });
+
+  // typing subtasks: Enter adds and keeps the box open, Esc / empty blur closes it
+  $("#todoGroups").addEventListener("keydown", (e) => {
+    const inp = e.target.closest("[data-sub-input]"); if (!inp) return;
+    if (e.key === "Escape") { addingSubFor = null; renderTodos(); return; }
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    const title = inp.value.trim(); if (!title) return;
+    const td = state.todos.find((x) => x.id === inp.dataset.subInput); if (!td) return;
+    (td.subs ||= []).push({ id: uid(), title, done: false });
+    if (td.done) { td.done = false; td.doneAt = null; } // a new step means it isn't finished
+    inp.value = "";
+    save(); render();
+  });
+  $("#todoGroups").addEventListener("focusout", (e) => {
+    const inp = e.target.closest("[data-sub-input]");
+    if (inp && !inp.value.trim()) setTimeout(() => { if (addingSubFor === inp.dataset.subInput && !$(`[data-sub-input]:focus`)) { addingSubFor = null; renderTodos(); } }, 150);
+  });
+  async function renameSub(tid, sid) {
+    const sub = subs(state.todos.find((x) => x.id === tid) || {}).find((x) => x.id === sid); if (!sub) return;
+    const r = await openDialog("改小任务", `<label>小任务<input type="text" id="sbTitle" value="${esc(sub.title)}" /></label>`, SAVE_BTNS);
+    if (r !== "ok") return;
+    const v = $("#sbTitle").value.trim();
+    const cur = subs(state.todos.find((x) => x.id === tid) || {}).find((x) => x.id === sid);
+    if (v && cur) { cur.title = v; save(); render(); }
+  }
 
   $("#todoFilters").onclick = (e) => {
     const b = e.target.closest("[data-f]"); if (!b) return;
@@ -374,7 +465,7 @@
   function trashEntries() {
     const out = [];
     for (const t of state.todos) if (t.deletedAt)
-      out.push({ key: `t:${t.id}`, at: t.deletedAt, kind: "待办", title: t.title, sub: `截止 ${t.due.replace("T", " ")}` });
+      out.push({ key: `t:${t.id}`, at: t.deletedAt, kind: "待办", title: t.title, sub: t.due ? `截止 ${t.due.replace("T", " ")}` : "没有截止日期" });
     for (const x of state.lists || []) if (x.deletedAt)
       out.push({ key: `l:${x.id}`, at: x.deletedAt, kind: window.Planner?.listLabel?.(x.type) || "清单",
         title: x.person ? `${x.person} · ${x.name}` : x.name, sub: x.date ? fmtDay(x.date) : "清单条目" });

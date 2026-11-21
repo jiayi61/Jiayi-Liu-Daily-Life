@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body class="locked">
   <div class="book">
@@ -100,8 +100,9 @@
           </div>
           <div class="row">
             <label class="lbl">截止</label>
-            <input type="date" id="tDate" required />
+            <input type="date" id="tDate" />
             <input type="time" id="tTime" value="23:59" />
+            <label class="inline-chk" title="有些事情没有明确的死线"><input type="checkbox" id="tNoDue" /> 不设截止</label>
             <select id="tPrio" title="优先级">
               <option value="2">🔴 重要</option>
               <option value="1" selected>🟡 普通</option>
@@ -183,10 +184,10 @@
     </div>
   </aside>
 
-  <script src="app.js?v=8"></script>
-  <script src="daycal.js?v=8"></script>
-  <script src="lists.js?v=8"></script>
-  <script type="module" src="cloud.js?v=8"></script>
+  <script src="app.js?v=9"></script>
+  <script src="daycal.js?v=9"></script>
+  <script src="lists.js?v=9"></script>
+  <script type="module" src="cloud.js?v=9"></script>
   <script>
     if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
   </script>

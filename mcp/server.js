@@ -46,6 +46,7 @@ async function categories() {
 }
 
 function normDue(due) {
+  if (due == null || /^(none|null|no|-|无)?$/i.test(String(due).trim())) return ""; // no deadline
   // accepts "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (local time)
   const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(due.trim());
   if (!m) throw new Error(`Bad due date "${due}". Use YYYY-MM-DD or YYYY-MM-DDTHH:MM (local time).`);
@@ -63,8 +64,12 @@ function occursOn(ev, day) {
   return false;
 }
 
-const fmtTodo = (t) =>
-  `- [${t.done ? "x" : " "}] ${t.title}  (due ${t.due.replace("T", " ")}, ${PRIO_NAME[t.prio] ?? "normal"}${t.tag ? `, #${t.tag}` : ""}${!t.done && new Date(t.due) < new Date() ? ", OVERDUE" : ""})  id=${t.id}`;
+const subsOf = (t) => t.subs || [];
+const fmtTodo = (t) => {
+  const s = subsOf(t), n = s.filter((x) => x.done).length;
+  return `- [${t.done ? "x" : " "}] ${t.title}  (${t.due ? `due ${t.due.replace("T", " ")}` : "no deadline"}, ${PRIO_NAME[t.prio] ?? "normal"}${t.tag ? `, #${t.tag}` : ""}${!t.done && t.due && new Date(t.due) < new Date() ? ", OVERDUE" : ""}${s.length ? `, ${n}/${s.length} subtasks = ${Math.round((n / s.length) * 100)}%` : ""})  id=${t.id}`
+    + s.map((x) => `\n    - [${x.done ? "x" : " "}] ${x.title}`).join("");
+};
 const text = (s) => ({ content: [{ type: "text", text: s }] });
 const header = () => { const d = new Date(); return `Now: ${nowLocal().replace("T", " ")} ${WEEK[d.getDay()]} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n`; };
 
@@ -87,7 +92,8 @@ async function findTodo(ref) {
 async function writeTodo(t) {
   // the website keeps `id` inside each document too
   const { updatedAt, dueAt, ...rest } = t; // never copy server-only fields back
-  const data = { ...rest, dueAt: Timestamp.fromDate(new Date(t.due)), updatedAt: FieldValue.serverTimestamp() };
+  const data = { ...rest, updatedAt: FieldValue.serverTimestamp() };
+  if (t.due) data.dueAt = Timestamp.fromDate(new Date(t.due));
   await todos.doc(t.id).set(data);
 }
 
@@ -96,15 +102,17 @@ const server = new McpServer({ name: "daily-planner", version: "1.0.0" });
 
 server.tool(
   "add_todo",
-  "Add a to-do to Jiayi's Daily Planner. Every to-do needs a deadline. Dates/times are the user's local time; resolve words like 'Friday' or 'tomorrow night' against the 'Now' shown by list tools (call list_todos first if unsure of today's date). If no time is given, 23:59 is used.",
+  "Add a to-do to the Daily Planner. The deadline is optional (leave it out for open-ended things). Dates/times are the user's local time; resolve words like 'Friday' or 'tomorrow night' against the 'Now' shown by list tools (call list_todos first if unsure of today's date). If a date has no time, 23:59 is used. Big tasks can be broken into `subtasks`; the planner shows their completion %.",
   {
     title: z.string().min(1).describe("What needs to be done"),
-    due: z.string().describe("Deadline, local time: YYYY-MM-DD or YYYY-MM-DDTHH:MM"),
+    due: z.string().optional().describe("Deadline, local time: YYYY-MM-DD or YYYY-MM-DDTHH:MM; omit for no deadline"),
     priority: z.enum(["high", "normal", "low"]).default("normal"),
     tag: z.string().optional().describe("Optional short tag, e.g. a course code"),
+    subtasks: z.array(z.string()).optional().describe("Optional smaller steps"),
   },
-  async ({ title, due, priority, tag }) => {
+  async ({ title, due, priority, tag, subtasks }) => {
     const t = { id: uid(), title: title.trim(), due: normDue(due), prio: PRIO[priority], tag: tag?.trim() || "", done: false, doneAt: null, createdAt: new Date().toISOString() };
+    if (subtasks?.length) t.subs = subtasks.map((x) => ({ id: uid(), title: x.trim(), done: false })).filter((x) => x.title);
     await writeTodo(t);
     return text(`Added:\n${fmtTodo(t)}`);
   }
@@ -121,19 +129,29 @@ server.tool(
   async ({ status, due_on_or_before, due_on_or_after }) => {
     let list = await liveDocs(todos);
     if (status !== "all") list = list.filter((t) => !!t.done === (status === "done"));
-    if (due_on_or_before) list = list.filter((t) => t.due.slice(0, 10) <= due_on_or_before);
-    if (due_on_or_after) list = list.filter((t) => t.due.slice(0, 10) >= due_on_or_after);
-    list.sort((a, b) => a.due.localeCompare(b.due));
+    if (due_on_or_before) list = list.filter((t) => t.due && t.due.slice(0, 10) <= due_on_or_before);
+    if (due_on_or_after) list = list.filter((t) => t.due && t.due.slice(0, 10) >= due_on_or_after);
+    list.sort((a, b) => (a.due || "~").localeCompare(b.due || "~")); // no-deadline ones last
     return text(header() + (list.length ? list.map(fmtTodo).join("\n") : "(no matching to-dos)"));
   }
 );
 
 server.tool(
   "complete_todo",
-  "Mark a to-do as done (or not done). `todo` is the id from list_todos, or part of its title.",
-  { todo: z.string(), done: z.boolean().default(true) },
-  async ({ todo, done }) => {
+  "Mark a to-do as done (or not done). `todo` is the id from list_todos, or part of its title. Pass `subtask` (part of its title) to tick just one subtask; ticking the last one completes the to-do.",
+  { todo: z.string(), done: z.boolean().default(true), subtask: z.string().optional() },
+  async ({ todo, done, subtask }) => {
     const t = await findTodo(todo);
+    if (subtask) {
+      const q = subtask.toLowerCase();
+      const hits = subsOf(t).filter((x) => x.title.toLowerCase().includes(q));
+      if (hits.length !== 1) throw new Error(hits.length ? `"${subtask}" matches several subtasks: ${hits.map((x) => x.title).join(", ")}` : `No subtask matches "${subtask}".`);
+      hits[0].done = done;
+      if (subsOf(t).every((x) => x.done)) { if (!t.done) { t.done = true; t.doneAt = nowLocal(); } }
+      else if (t.done) { t.done = false; t.doneAt = null; }
+      await writeTodo(t);
+      return text(`Subtask ${done ? "done" : "reopened"}:\n${fmtTodo(t)}`);
+    }
     t.done = done;
     t.doneAt = done ? nowLocal() : null;
     await writeTodo(t);
@@ -143,18 +161,23 @@ server.tool(
 
 server.tool(
   "update_todo",
-  "Change a to-do's title, deadline, priority or tag. `todo` is the id or part of the title.",
+  "Change a to-do's title, deadline, priority or tag, or add subtasks. `todo` is the id or part of the title. Use due='none' to remove the deadline.",
   {
     todo: z.string(),
     title: z.string().optional(),
     due: z.string().optional().describe("YYYY-MM-DD or YYYY-MM-DDTHH:MM, local time"),
     priority: z.enum(["high", "normal", "low"]).optional(),
     tag: z.string().optional(),
+    add_subtasks: z.array(z.string()).optional(),
   },
-  async ({ todo, title, due, priority, tag }) => {
+  async ({ todo, title, due, priority, tag, add_subtasks }) => {
     const t = await findTodo(todo);
     if (title) t.title = title.trim();
-    if (due) t.due = normDue(due);
+    if (due !== undefined) t.due = normDue(due);
+    if (add_subtasks?.length) {
+      t.subs = [...subsOf(t), ...add_subtasks.map((x) => ({ id: uid(), title: x.trim(), done: false })).filter((x) => x.title)];
+      if (t.done) { t.done = false; t.doneAt = null; }
+    }
     if (priority) t.prio = PRIO[priority];
     if (tag !== undefined) t.tag = tag.trim();
     await writeTodo(t);
@@ -214,7 +237,7 @@ server.tool(
     const cats = await categories();
     const tagOf = (e) => cats.find((c) => c.id === e.cat);
     const due = (await liveDocs(todos))
-      .filter((t) => t.due.slice(0, 10) === day).sort((a, b) => a.due.localeCompare(b.due));
+      .filter((t) => t.due && t.due.slice(0, 10) === day).sort((a, b) => a.due.localeCompare(b.due));
     const lines = [header(), `Schedule for ${day} ${WEEK[parseYmd(day).getDay()]}:`];
     lines.push(...(evs.length ? evs.map((e) => `- [${(e.doneOn || []).includes(day) ? "x" : " "}] ${e.start}${e.end ? "–" + e.end : ""} ${e.title}${tagOf(e) ? ` [${tagOf(e).label}]` : ""}${e.note ? ` (${e.note})` : ""}${e.repeat && e.repeat !== "once" ? ` ↻${e.repeat}` : ""}  id=${e.id}`) : ["(nothing scheduled)"]));
     lines.push("", "To-dos due this day:", ...(due.length ? due.map(fmtTodo) : ["(none)"]));
