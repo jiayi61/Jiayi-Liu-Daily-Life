@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body class="locked">
   <div class="book">
@@ -52,6 +52,9 @@
     <!-- ===== Week strip ===== -->
     <nav class="week" id="weekStrip"></nav>
 
+    <!-- ===== Long-term goals (tap to open the goals page) ===== -->
+    <section class="goal-strip" id="goalStrip" role="button" tabindex="0" title="打开长期目标"></section>
+
     <!-- ===== Summary ===== -->
     <section class="summary">
       <div class="ring-wrap">
@@ -87,7 +90,7 @@
       <!-- ===== Todos ===== -->
       <section class="card" id="todoCard">
         <div class="card-head">
-          <h2>✅ 待办清单 <small>To-do</small></h2>
+          <h2>🎯 短期目标 <small>To-do</small></h2>
           <div class="filters" id="todoFilters">
             <button data-f="all" class="on">全部</button>
             <button data-f="day">只看当天</button>
@@ -109,6 +112,7 @@
               <option value="0">🟢 随意</option>
             </select>
             <input type="text" id="tTag" placeholder="标签（可选）" class="short" />
+            <select id="tGoal" title="属于哪个长期目标" hidden></select>
             <button type="submit" class="primary">＋ 添加</button>
           </div>
         </form>
@@ -168,6 +172,19 @@
     </form>
   </dialog>
 
+  <!-- ===== Long-term goals page ===== -->
+  <div class="goals-page" id="goalsPage" hidden>
+    <div class="gp-inner">
+      <div class="gp-head">
+        <button type="button" class="ghost" id="goalsBack">← 返回今天</button>
+        <button type="button" class="primary" id="goalNew">＋ 新长期目标</button>
+      </div>
+      <h1 class="gp-title">🌟 长期目标</h1>
+      <p class="gp-sub">这些是会陪你最久的事。把它们拆成里程碑和短期目标，一步一步放进每一天。</p>
+      <div id="goalList"></div>
+    </div>
+  </div>
+
   <!-- ===== Lists drawer ===== -->
   <aside class="drawer" id="listsDrawer" hidden>
     <div class="drawer-bg"></div>
@@ -184,10 +201,11 @@
     </div>
   </aside>
 
-  <script src="app.js?v=9"></script>
-  <script src="daycal.js?v=9"></script>
-  <script src="lists.js?v=9"></script>
-  <script type="module" src="cloud.js?v=9"></script>
+  <script src="app.js?v=10"></script>
+  <script src="daycal.js?v=10"></script>
+  <script src="lists.js?v=10"></script>
+  <script src="goals.js?v=10"></script>
+  <script type="module" src="cloud.js?v=10"></script>
   <script>
     if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
   </script>

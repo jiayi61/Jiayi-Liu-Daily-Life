@@ -33,7 +33,7 @@
   const TRASH_DAYS = 30;
 
   /* ---------- state ---------- */
-  const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {}, lists: [], listTypes: [] });
+  const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {}, lists: [], listTypes: [], goals: [] });
   let state = blank(); // filled in by cloud.js after sign-in
   let selected = todayStr();
   let filter = "all";
@@ -110,7 +110,9 @@
     renderNotes();
     renderSummary();
     renderTrashCount();
+    renderGoalSelect();
     window.Planner?.onRender?.();
+    window.Planner?.renderHooks?.forEach((f) => f());
   }
 
   function renderDate() {
@@ -164,9 +166,13 @@
     </ul>`;
   }
 
+  const liveGoals = () => (state.goals || []).filter((g) => !g.deletedAt);
+  const goalOf = (t) => t.goal && liveGoals().find((g) => g.id === t.goal);
+
   function todoItem(t) {
     const left = t.done ? null : leftText(t);
     const p = progress(t);
+    const g = goalOf(t);
     return `<li class="todo ${t.done ? "is-done" : ""}" data-id="${t.id}">
       <input type="checkbox" class="chk" data-todo-done="${t.id}" ${t.done ? "checked" : ""} aria-label="完成" />
       <span class="prio p${t.prio}"></span>
@@ -176,6 +182,7 @@
           ${t.due ? `<span class="due">⏰ ${fmtDue(t)}</span>` : ""}
           ${left ? `<span class="left ${left.cls}">${left.text}</span>` : ""}
           ${t.tag ? `<span class="tag"># ${esc(t.tag)}</span>` : ""}
+          ${g ? `<span class="goal-chip" data-open-goal="${g.id}" title="属于长期目标">${esc(g.emoji || "🌟")} ${esc(g.title)}</span>` : ""}
           ${p != null ? `<span class="prog" title="${subs(t).filter((x) => x.done).length}/${subs(t).length} 个小任务完成"><i><b style="width:${Math.round(p * 100)}%"></b></i>${Math.round(p * 100)}%</span>` : ""}
         </div>
         ${subsHtml(t)}
@@ -292,6 +299,15 @@
     save(); render();
   }
 
+  const goalOptions = (cur) => `<option value="">🌟 不属于长期目标</option>` + liveGoals().filter((g) => !g.done || g.id === cur)
+    .map((g) => `<option value="${g.id}" ${g.id === cur ? "selected" : ""}>${esc(g.emoji || "🌟")} ${esc(g.title)}</option>`).join("");
+  function renderGoalSelect() {
+    const sel = $("#tGoal"), keep = sel.value;
+    sel.hidden = !liveGoals().some((g) => !g.done);
+    sel.innerHTML = goalOptions(keep);
+    sel.value = liveGoals().some((g) => g.id === keep) ? keep : "";
+  }
+
   async function editTodo(t) {
     const r = await openDialog("编辑待办", `
       <label>内容<input type="text" id="xTitle" value="${esc(t.title)}" /></label>
@@ -302,7 +318,8 @@
         <option value="2" ${t.prio == 2 ? "selected" : ""}>🔴 重要</option>
         <option value="1" ${t.prio == 1 ? "selected" : ""}>🟡 普通</option>
         <option value="0" ${t.prio == 0 ? "selected" : ""}>🟢 随意</option></select></label>
-      <label>标签<input type="text" id="xTag" value="${esc(t.tag)}" /></label></div>`, SAVE_BTNS);
+      <label>标签<input type="text" id="xTag" value="${esc(t.tag)}" /></label></div>
+      ${liveGoals().length ? `<label>属于哪个长期目标<select id="xGoal">${goalOptions(t.goal)}</select></label>` : ""}`, SAVE_BTNS);
     if (r !== "ok") return;
     const title = $("#xTitle").value.trim();
     const noDue = $("#xNoDue").checked;
@@ -310,6 +327,7 @@
     t = state.todos.find((x) => x.id === t.id);
     if (!t) return;
     Object.assign(t, { title, due: noDue ? "" : `${$("#xDate").value}T${$("#xTime").value || "23:59"}`, prio: Number($("#xPrio").value), tag: $("#xTag").value.trim() });
+    if ($("#xGoal")) { if ($("#xGoal").value) t.goal = $("#xGoal").value; else delete t.goal; }
     save(); render();
   }
 
@@ -343,6 +361,7 @@
     state.todos.push({
       id: uid(), title, due: noDue ? "" : `${$("#tDate").value}T${$("#tTime").value || "23:59"}`,
       prio: Number($("#tPrio").value), tag: $("#tTag").value.trim(),
+      ...($("#tGoal").value ? { goal: $("#tGoal").value } : {}),
       done: false, doneAt: null, createdAt: new Date().toISOString(),
     });
     save();
@@ -466,6 +485,8 @@
     const out = [];
     for (const t of state.todos) if (t.deletedAt)
       out.push({ key: `t:${t.id}`, at: t.deletedAt, kind: "待办", title: t.title, sub: t.due ? `截止 ${t.due.replace("T", " ")}` : "没有截止日期" });
+    for (const g of state.goals || []) if (g.deletedAt)
+      out.push({ key: `g:${g.id}`, at: g.deletedAt, kind: "长期目标", title: `${g.emoji || "🌟"} ${g.title}`, sub: g.target ? `目标时间：${g.target}` : "长期目标" });
     for (const x of state.lists || []) if (x.deletedAt)
       out.push({ key: `l:${x.id}`, at: x.deletedAt, kind: window.Planner?.listLabel?.(x.type) || "清单",
         title: x.person ? `${x.person} · ${x.name}` : x.name, sub: x.date ? fmtDay(x.date) : "清单条目" });
@@ -482,7 +503,10 @@
 
   function applyTrash(key, action) { // action: "restore" | "purge"
     const [k, id, day] = key.split(":");
-    if (k === "l") {
+    if (k === "g") {
+      const g = state.goals.find((y) => y.id === id); if (!g) return;
+      if (action === "restore") delete g.deletedAt; else state.goals = state.goals.filter((y) => y !== g);
+    } else if (k === "l") {
       const x = state.lists.find((y) => y.id === id); if (!x) return;
       if (action === "restore") delete x.deletedAt; else state.lists = state.lists.filter((y) => y !== x);
     } else if (k === "t") {
@@ -604,6 +628,7 @@
     toast: (msg, undo) => toast(msg, undo),
     trash: (key, action) => applyTrash(key, action),
     deleteEvent: (ev) => deleteEvent(ev),
+    renderHooks: [],
     selected: () => selected,
     profile: () => profile,
     setProfile(p) { profile = p; render(); },
@@ -611,7 +636,7 @@
       profile = { ...(profile || {}), ...patch };
       if (window.PlannerCloud?.saveProfile) window.PlannerCloud.saveProfile(patch); else render();
     },
-    util: { DAY_START, lmin, evEnd, toMin, MOODS, esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay },
+    util: { liveGoals, leftText, fmtDue, DAY_START, lmin, evEnd, toMin, MOODS, esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay },
   };
 
   render();

@@ -148,7 +148,7 @@
     const kinds = types();
     L.push(`请你当我的每周回顾伙伴。下面是我 ${fmtDay(from)} 到 ${fmtDay(to)} 的日程、待办、笔记和心情。`);
     L.push(`请做两件事：`);
-    L.push(`1. 先用几句话陪我回顾这段时间：做成了什么、拖延了什么、情绪和状态怎么样，再问我 1–2 个值得想一想的问题。`);
+    L.push(`1. 先用几句话陪我回顾这段时间：做成了什么、拖延了什么、情绪和状态怎么样，也看看这段时间的安排有没有在推进【我的长期目标】，再问我 1–2 个值得想一想的问题。`);
     L.push(`2. 从我的记录里找出和「${kinds.map((t) => t.label).join("、")}」有关的内容，严格按最后的【清单格式】列出来，全部放进一个代码块里。没把握的不要列；【已经记过的】不要重复列。`);
     L.push("");
     for (let d = from; d <= to; d = addDays(d, 1)) {
@@ -176,6 +176,8 @@
     }
     const time = P.timeSummary?.(from, to) || [];
     if (time.length) { L.push(...time, ""); }
+    const goals = P.goalSummary?.() || [];
+    if (goals.length) { L.push(...goals, ""); }
     const next = addDays(to, 7);
     const upcoming = liveTodos().filter((t) => !t.done && t.due && dueDay(t) > to && dueDay(t) <= next).sort((a, b) => a.due.localeCompare(b.due));
     const overdue = liveTodos().filter((t) => !t.done && t.due && dueDay(t) < from).sort((a, b) => a.due.localeCompare(b.due));

@@ -24,6 +24,7 @@ const userRef = db.collection("users").doc(PLANNER_UID);
 const todos = userRef.collection("todos");
 const events = userRef.collection("events");
 const lists = userRef.collection("lists");
+const goals = userRef.collection("goals");
 const listTypes = userRef.collection("listTypes");
 
 /* ---------- helpers (same formats as the website) ---------- */
@@ -109,10 +110,12 @@ server.tool(
     priority: z.enum(["high", "normal", "low"]).default("normal"),
     tag: z.string().optional().describe("Optional short tag, e.g. a course code"),
     subtasks: z.array(z.string()).optional().describe("Optional smaller steps"),
+    goal: z.string().optional().describe("Long-term goal this short-term goal belongs to: its id or part of its title (see list_goals)"),
   },
-  async ({ title, due, priority, tag, subtasks }) => {
+  async ({ title, due, priority, tag, subtasks, goal }) => {
     const t = { id: uid(), title: title.trim(), due: normDue(due), prio: PRIO[priority], tag: tag?.trim() || "", done: false, doneAt: null, createdAt: new Date().toISOString() };
     if (subtasks?.length) t.subs = subtasks.map((x) => ({ id: uid(), title: x.trim(), done: false })).filter((x) => x.title);
+    if (goal) t.goal = (await findGoal(goal)).id;
     await writeTodo(t);
     return text(`Added:\n${fmtTodo(t)}`);
   }
@@ -169,11 +172,13 @@ server.tool(
     priority: z.enum(["high", "normal", "low"]).optional(),
     tag: z.string().optional(),
     add_subtasks: z.array(z.string()).optional(),
+    goal: z.string().optional().describe("Attach to a long-term goal (id or part of title); 'none' detaches"),
   },
-  async ({ todo, title, due, priority, tag, add_subtasks }) => {
+  async ({ todo, title, due, priority, tag, add_subtasks, goal }) => {
     const t = await findTodo(todo);
     if (title) t.title = title.trim();
     if (due !== undefined) t.due = normDue(due);
+    if (goal !== undefined) { if (/^(none|无)$/i.test(goal.trim())) delete t.goal; else t.goal = (await findGoal(goal)).id; }
     if (add_subtasks?.length) {
       t.subs = [...subsOf(t), ...add_subtasks.map((x) => ({ id: uid(), title: x.trim(), done: false })).filter((x) => x.title)];
       if (t.done) { t.done = false; t.doneAt = null; }
@@ -267,6 +272,86 @@ server.tool(
   async () => {
     const cats = await categories();
     return text(cats.length ? cats.map((c, i) => `${i + 1}. ${c.emoji} ${c.label}  id=${c.id}`).join("\n") : "No tags set up yet (the website asks on first login).");
+  }
+);
+
+/* ---------- long-term goals (website: 🌟 长期目标 page) ---------- */
+async function findGoal(ref) {
+  const all = await liveDocs(goals);
+  const byId = all.find((g) => g.id === ref); if (byId) return byId;
+  const hits = all.filter((g) => g.title.toLowerCase().includes(ref.toLowerCase()));
+  if (hits.length === 1) return hits[0];
+  throw new Error(hits.length ? `"${ref}" matches several goals: ${hits.map((g) => g.title).join(", ")}` : `No long-term goal matches "${ref}".`);
+}
+const goalProgress = (g, todosAll) => {
+  if (g.done) return 1;
+  const share = (t) => (t.done ? 1 : (t.subs || []).length ? t.subs.filter((x) => x.done).length / t.subs.length : 0);
+  const parts = [...(g.steps || []).map((x) => (x.done ? 1 : 0)), ...todosAll.filter((t) => t.goal === g.id).map(share)];
+  return parts.length ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
+};
+
+server.tool(
+  "list_goals",
+  "List the user's long-term goals (the big things they're working toward over months/years) with milestones, linked short-term goals (to-dos) and progress.",
+  { include_achieved: z.boolean().default(false) },
+  async ({ include_achieved }) => {
+    const all = (await liveDocs(goals)).filter((g) => include_achieved || !g.done);
+    const tds = await liveDocs(todos);
+    if (!all.length) return text("No long-term goals yet.");
+    return text(all.map((g) => {
+      const p = goalProgress(g, tds);
+      const linkedT = tds.filter((t) => t.goal === g.id);
+      return [`${g.emoji || "🌟"} ${g.title}${g.done ? " (ACHIEVED)" : ""} — ${p == null ? "no steps yet" : Math.round(p * 100) + "%"}${g.target ? `, target: ${g.target}` : ""}  id=${g.id}`,
+        g.why ? `  why: ${g.why}` : "",
+        ...(g.steps || []).map((x) => `  milestone [${x.done ? "x" : " "}] ${x.title}`),
+        ...linkedT.map((t) => `  short-term [${t.done ? "x" : " "}] ${t.title}${t.due ? ` (due ${t.due.replace("T", " ")})` : ""}  id=${t.id}`)].filter(Boolean).join("\n");
+    }).join("\n\n"));
+  }
+);
+
+server.tool(
+  "add_goal",
+  "Create a long-term goal (something that takes months or years). Short-term goals are added with add_todo(goal=...).",
+  {
+    title: z.string().min(1),
+    emoji: z.string().optional(),
+    why: z.string().optional().describe("Why it matters to the user"),
+    target: z.string().optional().describe("Free text, e.g. '2027 年夏天'"),
+    milestones: z.array(z.string()).optional(),
+  },
+  async ({ title, emoji, why, target, milestones }) => {
+    const id = uid();
+    const g = { id, title: title.trim(), emoji: emoji || "🌟", why: why?.trim() || "", target: target?.trim() || "",
+      steps: (milestones || []).map((x) => ({ id: uid(), title: x.trim(), done: false })).filter((x) => x.title), done: false, doneAt: null, createdAt: new Date().toISOString() };
+    await goals.doc(id).set({ ...g, updatedAt: FieldValue.serverTimestamp() });
+    return text(`Added long-term goal: ${g.emoji} ${g.title}${g.steps.length ? ` with ${g.steps.length} milestones` : ""}  id=${id}`);
+  }
+);
+
+server.tool(
+  "update_goal",
+  "Tick/untick a milestone, add milestones, or mark a long-term goal achieved. `goal` is the id or part of the title.",
+  {
+    goal: z.string(),
+    complete_milestone: z.string().optional().describe("Part of a milestone title to tick"),
+    reopen_milestone: z.string().optional(),
+    add_milestones: z.array(z.string()).optional(),
+    achieved: z.boolean().optional(),
+  },
+  async ({ goal, complete_milestone, reopen_milestone, add_milestones, achieved }) => {
+    const g = await findGoal(goal);
+    const steps = g.steps || [];
+    for (const [q, v] of [[complete_milestone, true], [reopen_milestone, false]]) {
+      if (!q) continue;
+      const hits = steps.filter((x) => x.title.toLowerCase().includes(q.toLowerCase()));
+      if (hits.length !== 1) throw new Error(hits.length ? `"${q}" matches several milestones` : `No milestone matches "${q}".`);
+      hits[0].done = v;
+    }
+    if (add_milestones?.length) steps.push(...add_milestones.map((x) => ({ id: uid(), title: x.trim(), done: false })).filter((x) => x.title));
+    const patch = { steps, updatedAt: FieldValue.serverTimestamp() };
+    if (achieved !== undefined) { patch.done = achieved; patch.doneAt = achieved ? nowLocal() : null; }
+    await goals.doc(g.id).update(patch);
+    return text(`Updated ${g.emoji || "🌟"} ${g.title}.`);
   }
 );
 

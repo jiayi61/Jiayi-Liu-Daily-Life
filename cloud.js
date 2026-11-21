@@ -6,6 +6,7 @@
 //   users/{uid}/days/{date}  { note, mood, updatedAt }
 //   users/{uid}/lists/{id}   { type, name, date, note, city?, person?, occasion?, createdAt, deletedAt? }  (movies, restaurants, gifts…)
 //   users/{uid}/listTypes/{id} { label, icon }  user-made list kinds
+//   users/{uid}/goals/{id}   { title, emoji, why, target, steps[{id,title,done}], done, doneAt, createdAt, deletedAt? }  long-term goals
 import { FIREBASE_CONFIG, ALLOWED_EMAILS } from "./firebase-config.js";
 
 const V = "10.12.2";
@@ -24,7 +25,7 @@ function unlock() {
   gate.hidden = true;
 }
 // state arrays that map 1:1 to a collection of {id}-keyed documents
-const ARRAYS = ["todos", "events", "lists", "listTypes"];
+const ARRAYS = ["todos", "events", "lists", "listTypes", "goals"];
 const NAMES = [...ARRAYS, "days"];
 const emptyMirror = () => Object.fromEntries(NAMES.map((n) => [n, new Map()]));
 const META_FIELDS = ["updatedAt", "dueAt"];

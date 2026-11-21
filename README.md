@@ -6,7 +6,8 @@
 - **今日日程（整天日历）**：像苹果日历一样，一天从早上 5:00 到第二天凌晨 5:00。点空白处或拖一段新建，拖动日程改时间，拖底边改时长（手机上先长按再拖）；重叠的日程并排显示；可设置「仅这一天 / 每天 / 工作日 / 每周」重复，勾选完成。
 - **日程标签**：第一次登录时选身份（学生、研究生、上班族…），自动推荐一组按优先级排好的标签；之后在「🏷 标签」里增删、改名、调顺序。
 - **⏱ 这周的时间**：按标签统计这周打了勾的日程花了多少小时，和计划时长、上周对比。
-- **待办清单**：截止日期和时间可以不设（放进「没有截止日期」一组）；有优先级、标签；可以拆成小任务，显示完成度，小任务全勾完自动完成；自动分组为「已逾期 / 当天截止 / 即将到来 / 没有截止日期 / 当天完成」，并显示倒计时。
+- **🎯 长期目标**：首页周条下方显示每个长期目标的进度环，点进去是完整的目标页：写下为什么想做、目标时间，拆成里程碑；也可以直接从目标「拆一个短期目标」放进待办。进度 = 里程碑和关联短期目标的平均完成度。
+- **短期目标（待办）**：可以关联到一个长期目标；截止日期和时间可以不设（放进「没有截止日期」一组）；有优先级、标签；可以拆成小任务，显示完成度，小任务全勾完自动完成；自动分组为「已逾期 / 当天截止 / 即将到来 / 没有截止日期 / 当天完成」，并显示倒计时。
 - **今日笔记 + 心情**：自动保存。
 - **一周概览**：点击周条切换日期；键盘 ← → 切换日期，T 回到今天。
 - **云同步**：Google 或邮箱登录，多设备实时同步，断网时照常使用、联网后自动补传。
@@ -59,11 +60,12 @@
 ## 数据结构（为以后做原生 App / 推送提醒预留）
 Firestore 中每一项单独一个文档：
 ```
-users/{uid}/todos/{id}    title, due(可为空), dueAt(时间戳，有截止时才有), prio, tag, subs[{id,title,done}], done, doneAt, createdAt
+users/{uid}/todos/{id}    title, due(可为空), dueAt(时间戳，有截止时才有), prio, tag, subs[{id,title,done}], goal(长期目标 id), done, doneAt, createdAt
 users/{uid}/events/{id}   title, start, end, note, cat(标签 id), color, repeat, date, skip[], doneOn[]
 users/{uid}/days/{日期}    note, mood
 users/{uid}/lists/{id}     type, name, date, note, city?, person?, occasion?, createdAt
 users/{uid}/listTypes/{id} label, icon（自己新建的清单）
+users/{uid}/goals/{id}     title, emoji, why, target, steps[{id,title,done}], done, doneAt, createdAt
 users/{uid}/meta/profile  nickname, role, categories[{id, emoji, label, color}]（第一次登录时填写，标题显示「称呼's Daily Planner」）
 ```
 删除的条目带 `deletedAt`（在垃圾箱里，30 天后自动清除）。
