@@ -390,6 +390,7 @@
       ...rows.map((r) => `- ${r.c.emoji}${r.c.label}：${hrs(r.done)} 小时（计划 ${hrs(r.plan)}）`)];
   };
   P.tagPresets = PRESETS;
+  P.catOf = catOf;
 
   renderDay(P.selected());
 })();

@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body class="locked">
   <div class="book">
@@ -27,6 +27,7 @@
       </div>
       <div class="sync-box" id="syncBox"></div>
       <div class="top-actions">
+        <button class="ghost" id="monthBtn" title="这个月的时间、作息、心情和目标，像年度总结一样回顾自己">🌙 月度回顾</button>
         <button class="ghost" id="reviewBtn" title="复制这一周给 AI 回顾，再把整理好的清单粘贴回来">📦 每周回顾</button>
         <button class="ghost" id="listsBtn" title="电影、餐厅、礼物、城市……">📚 清单</button>
         <button class="ghost" id="trashBtn" title="误删的内容可以在这里找回">🗑 垃圾箱<span id="trashCount"></span></button>
@@ -54,6 +55,7 @@
 
     <!-- ===== Long-term goals (tap to open the goals page) ===== -->
     <section class="goal-strip" id="goalStrip" role="button" tabindex="0" title="打开长期目标"></section>
+    <button type="button" class="month-nudge" id="monthNudge" hidden></button>
 
     <!-- ===== Summary ===== -->
     <section class="summary">
@@ -185,6 +187,19 @@
     </div>
   </div>
 
+  <!-- ===== Monthly review page ===== -->
+  <div class="goals-page month-page" id="monthPage" hidden>
+    <div class="gp-inner">
+      <div class="gp-head">
+        <button type="button" class="ghost" id="monthBack">← 返回今天</button>
+        <div class="month-nav" id="monthNav"></div>
+      </div>
+      <h1 class="gp-title">🌙 月度回顾</h1>
+      <p class="gp-sub">从你这个月的记录里长出来的数字。看看时间花在了哪里、什么让你开心，再让 AI 帮你写一份画像。</p>
+      <div id="monthCards"></div>
+    </div>
+  </div>
+
   <!-- ===== Lists drawer ===== -->
   <aside class="drawer" id="listsDrawer" hidden>
     <div class="drawer-bg"></div>
@@ -201,11 +216,12 @@
     </div>
   </aside>
 
-  <script src="app.js?v=10"></script>
-  <script src="daycal.js?v=10"></script>
-  <script src="lists.js?v=10"></script>
-  <script src="goals.js?v=10"></script>
-  <script type="module" src="cloud.js?v=10"></script>
+  <script src="app.js?v=11"></script>
+  <script src="daycal.js?v=11"></script>
+  <script src="lists.js?v=11"></script>
+  <script src="goals.js?v=11"></script>
+  <script src="month.js?v=11"></script>
+  <script type="module" src="cloud.js?v=11"></script>
   <script>
     if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
   </script>

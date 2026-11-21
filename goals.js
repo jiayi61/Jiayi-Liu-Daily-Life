@@ -227,6 +227,7 @@
     return L;
   };
   P.goalProgress = progress;
+  P.openGoal = open;
 
   P.renderHooks.push(renderStrip, renderPage);
   renderStrip();

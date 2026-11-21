@@ -339,5 +339,5 @@
   }
 
   // exposed for the drawer's "paste AI result" shortcut and for tests
-  P.lists = { parseAI, buildPack, openReview };
+  P.lists = { parseAI, buildPack, openReview, types };
 })();

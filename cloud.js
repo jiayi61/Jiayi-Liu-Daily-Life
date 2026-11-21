@@ -25,7 +25,7 @@ function unlock() {
   gate.hidden = true;
 }
 // state arrays that map 1:1 to a collection of {id}-keyed documents
-const ARRAYS = ["todos", "events", "lists", "listTypes", "goals"];
+const ARRAYS = ["todos", "events", "lists", "listTypes", "goals", "reviews"];
 const NAMES = [...ARRAYS, "days"];
 const emptyMirror = () => Object.fromEntries(NAMES.map((n) => [n, new Map()]));
 const META_FIELDS = ["updatedAt", "dueAt"];
