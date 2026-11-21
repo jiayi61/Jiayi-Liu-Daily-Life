@@ -259,6 +259,12 @@ async function main() {
     document.getElementById("emailBtn").onclick = emailLogin;
   }
 
+  // surface errors from a redirect sign-in (used when the popup is blocked)
+  auth.getRedirectResult(a).catch((e) => {
+    console.error(e);
+    alert("Google 登录没有成功（" + e.code + "）。可以换用「邮箱登录」，或在 Chrome / Safari 里打开网站再试。");
+  });
+
   auth.onAuthStateChanged(a, (u) => {
     unsubs.forEach((x) => x()); unsubs = [];
     user = u; ready = false;
