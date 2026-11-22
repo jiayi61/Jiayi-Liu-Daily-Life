@@ -58,7 +58,7 @@
   function occursOn(ev, day) {
     if ((ev.skip || []).includes(day)) return false;
     if (ev.repeat === "once" || !ev.repeat) return ev.date === day;
-    if (day < ev.date) return false;
+    if (day < ev.date || (ev.until && day > ev.until)) return false; // until: last day of an imported series
     const dow = parseYmd(day).getDay();
     if (ev.repeat === "daily") return true;
     if (ev.repeat === "weekdays") return dow >= 1 && dow <= 5;

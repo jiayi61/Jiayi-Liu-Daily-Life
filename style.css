@@ -677,3 +677,5 @@ body.goals-open { overflow: hidden; }
 .imp-src summary { cursor: pointer; color: var(--ink-soft); }
 .imp-src details label { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12px; color: var(--ink-soft); }
 .imp-src details input { padding: 6px 8px; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; }
+.imp-src .imp-proxy { margin-top: 0; padding: 0 4px; }
+.imp-src .hint b { color: var(--ink); font-weight: 600; }

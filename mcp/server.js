@@ -58,7 +58,7 @@ function normDue(due) {
 function occursOn(ev, day) {
   if ((ev.skip || []).includes(day)) return false;
   if (!ev.repeat || ev.repeat === "once") return ev.date === day;
-  if (day < ev.date) return false;
+  if (day < ev.date || (ev.until && day > ev.until)) return false;
   const dow = parseYmd(day).getDay();
   if (ev.repeat === "daily") return true;
   if (ev.repeat === "weekdays") return dow >= 1 && dow <= 5;
