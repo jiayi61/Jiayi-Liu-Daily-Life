@@ -14,6 +14,7 @@
 - **手机 App**：可添加到手机主屏幕，全屏打开，离线可用。
 - **备份 / 恢复**：随时导出、导入 JSON 文件。
 - **🌙 月度回顾**：像年度总结一样看自己的一个月：时间花在哪个标签、作息是早起鸟还是夜猫子、最充实的一天、按时完成率、长期目标推进了多少、心情分布（以及哪些事让你心情更好）、写下的话和这个月的清单。还可以一键复制给 AI 写一份「月度画像」，粘贴回来存在当月。每月头一周首页会提醒你看上个月的回顾。
+- **📥 一键导入**：从 Canvas（上传日历 .ics 文件，或设置订阅链接后「一键刷新」，见 [proxy/README.md](proxy/README.md)）、Gmail（由 Claude 读邮件，找到的 ddl 先放进「待导入」，首页出现提示条）或任何日历的 .ics 文件导入。导入前会弹出列表，可以勾掉不想要的；导入过的不会重复导入，像是手动加过的默认不勾选。
 - **📦 每周回顾**：一键复制这一周的日程、待办、笔记和心情，粘贴给任意 AI（DeepSeek、豆包、ChatGPT…）聊 5 分钟；再把 AI 的回复粘贴回来，自动识别里面的清单行，勾选确认后加入。
 - **📚 清单（侧栏）**：电影、书、餐厅、礼物、城市，也可以自己新建清单。可以手动添加，也可以从每周回顾导入。
 - **垃圾箱**：删除的日程和待办先进垃圾箱，30 天内可恢复；删除后还能立刻点「撤销」。
@@ -61,14 +62,15 @@
 ## 数据结构（为以后做原生 App / 推送提醒预留）
 Firestore 中每一项单独一个文档：
 ```
-users/{uid}/todos/{id}    title, due(可为空), dueAt(时间戳，有截止时才有), prio, tag, subs[{id,title,done}], goal(长期目标 id), done, doneAt, createdAt
+users/{uid}/todos/{id}    title, due(可为空), dueAt(时间戳，有截止时才有), prio, tag, subs[{id,title,done}], goal(长期目标 id), src?(导入来源，如 canvas:…), note?, done, doneAt, createdAt
 users/{uid}/events/{id}   title, start, end, note, cat(标签 id), color, repeat, date, skip[], doneOn[]
 users/{uid}/days/{日期}    note, mood
 users/{uid}/lists/{id}     type, name, date, note, city?, person?, occasion?, createdAt
 users/{uid}/listTypes/{id} label, icon（自己新建的清单）
 users/{uid}/goals/{id}     title, emoji, why, target, steps[{id,title,done}], done, doneAt, createdAt
 users/{uid}/reviews/m-YYYY-MM  month, text（AI 写的月度画像）, createdAt, updatedAt?
-users/{uid}/meta/profile  nickname, role, categories[{id, emoji, label, color}]（第一次登录时填写，标题显示「称呼's Daily Planner」）
+users/{uid}/inbox/{id}     source, kind(todo/event), title, due?/date?,start?,end?, tag, from, src（Claude 找到、等你勾选导入的内容；处理完就删除）
+users/{uid}/meta/profile  nickname, role, categories[{id, emoji, label, color}], canvasFeed?, canvasProxy?（第一次登录时填写，标题显示「称呼's Daily Planner」）
 ```
 删除的条目带 `deletedAt`（在垃圾箱里，30 天后自动清除）。
 `dueAt` 是真正的时间戳字段，以后可以直接用它查询「1 小时内到期的待办」来发推送。

@@ -2,7 +2,9 @@
 
 让 Claude 在聊天时直接读写日程本（同一个 Firestore 数据库）。
 
-工具：`add_todo`、`list_todos`、`complete_todo`、`update_todo`、`delete_todo`、`add_schedule_item`、`list_schedule`、`delete_schedule_item`。
+工具：`add_todo`、`list_todos`、`complete_todo`、`update_todo`、`delete_todo`、`add_schedule_item`、`list_schedule`、`delete_schedule_item`、`list_tags`、`list_goals`、`add_goal`、`update_goal`、`add_list_item`、`list_list_items`、`delete_list_item`、`stage_import`。
+
+`stage_import`：把从 Gmail 等地方找到的 ddl 放进「待导入」，由用户在网站上勾选后再导入。例如对 Claude 说「读我的邮件，把 ddl 放进日程本的待导入」。
 
 ## 安装（在这台 Mac 上已装好）
 ```bash

@@ -33,7 +33,7 @@
   const TRASH_DAYS = 30;
 
   /* ---------- state ---------- */
-  const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {}, lists: [], listTypes: [], goals: [], reviews: [] });
+  const blank = () => ({ version: 1, events: [], todos: [], notes: {}, moods: {}, lists: [], listTypes: [], goals: [], reviews: [], inbox: [] });
   let state = blank(); // filled in by cloud.js after sign-in
   let selected = todayStr();
   let filter = "all";

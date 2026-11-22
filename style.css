@@ -658,3 +658,22 @@ body.goals-open { overflow: hidden; }
   .gp-head:has(.month-nav) { flex-wrap: wrap; gap: 8px; }
   .mc-cover h2 { font-size: 42px; }
 }
+
+/* ---------- import (Canvas / Gmail / .ics) ---------- */
+.import-nudge { background: linear-gradient(100deg, #2f5d50, #3f7f6a 60%, #8aa86a); }
+#editDlg:has(.imp), #editDlg:has(.imp-src) { width: min(600px, 96vw); }
+.imp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.imp-bar .ghost.small { margin-top: 0; }
+.imp-past { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 4px; margin-left: auto; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.imp-list { max-height: min(52vh, 460px); }
+.imp-list li[hidden] { display: none; }
+.imp-list input[type=checkbox] { margin-right: 6px; vertical-align: -1px; }
+.imp-src { display: flex; flex-direction: column; gap: 14px; }
+.imp-src section { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 12px; background: #fff; }
+.imp-src h4 { margin: 0 0 4px; font-size: 15px; }
+.imp-src .hint { margin: 4px 0 8px; }
+.imp-src .imp-file { display: inline-block; cursor: pointer; margin-right: 6px; }
+.imp-src details { margin-top: 10px; font-size: 13px; }
+.imp-src summary { cursor: pointer; color: var(--ink-soft); }
+.imp-src details label { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12px; color: var(--ink-soft); }
+.imp-src details input { padding: 6px 8px; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; }

@@ -7,6 +7,7 @@
 //   users/{uid}/lists/{id}   { type, name, date, note, city?, person?, occasion?, createdAt, deletedAt? }  (movies, restaurants, gifts…)
 //   users/{uid}/listTypes/{id} { label, icon }  user-made list kinds
 //   users/{uid}/goals/{id}   { title, emoji, why, target, steps[{id,title,done}], done, doneAt, createdAt, deletedAt? }  long-term goals
+//   users/{uid}/inbox/{id}   { source, kind, title, due?, date?, start?, end?, tag, note, from, src, createdAt }  found by Claude, waiting for you to tick what to import
 import { FIREBASE_CONFIG, ALLOWED_EMAILS } from "./firebase-config.js";
 
 const V = "10.12.2";
@@ -25,7 +26,7 @@ function unlock() {
   gate.hidden = true;
 }
 // state arrays that map 1:1 to a collection of {id}-keyed documents
-const ARRAYS = ["todos", "events", "lists", "listTypes", "goals", "reviews"];
+const ARRAYS = ["todos", "events", "lists", "listTypes", "goals", "reviews", "inbox"];
 const NAMES = [...ARRAYS, "days"];
 const emptyMirror = () => Object.fromEntries(NAMES.map((n) => [n, new Map()]));
 const META_FIELDS = ["updatedAt", "dueAt"];

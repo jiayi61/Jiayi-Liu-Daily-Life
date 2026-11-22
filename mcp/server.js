@@ -26,6 +26,7 @@ const events = userRef.collection("events");
 const lists = userRef.collection("lists");
 const goals = userRef.collection("goals");
 const listTypes = userRef.collection("listTypes");
+const inbox = userRef.collection("inbox");
 
 /* ---------- helpers (same formats as the website) ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -433,6 +434,47 @@ server.tool(
     if (!snap.exists || snap.data().deletedAt) throw new Error(`No list entry with id ${id}.`);
     await ref.update({ deletedAt: new Date().toISOString(), updatedAt: FieldValue.serverTimestamp() });
     return text(`Moved to trash: ${snap.data().name}`);
+  }
+);
+
+server.tool(
+  "stage_import",
+  "Put deadlines/events you found (e.g. by reading the user's Gmail) into the planner's import inbox instead of adding them directly. The website then shows a bar; the user ticks what to keep and imports it. Prefer this over add_todo when importing many items found in email or other apps. Items already imported or already staged (same `ref`) are skipped. Dates are local time.",
+  {
+    source: z.enum(["gmail", "canvas", "other"]).default("gmail"),
+    items: z.array(z.object({
+      title: z.string().min(1).describe("Short to-do title, e.g. '线代 HW08'"),
+      kind: z.enum(["todo", "event"]).default("todo").describe("todo = deadline; event = something at a fixed time (exam, interview)"),
+      due: z.string().optional().describe("todo deadline, YYYY-MM-DD or YYYY-MM-DDTHH:MM"),
+      date: z.string().optional().describe("event date YYYY-MM-DD"),
+      start: z.string().optional().describe("event start HH:MM"),
+      end: z.string().optional().describe("event end HH:MM"),
+      tag: z.string().optional().describe("Course code or short tag, reuse the user's existing tags (see list_todos)"),
+      from: z.string().optional().describe("Where it was found, e.g. the email subject"),
+      ref: z.string().optional().describe("Stable id of the source, e.g. Gmail thread id + item, used to avoid duplicates"),
+    })).min(1),
+  },
+  async ({ source, items }) => {
+    const [staged, done] = await Promise.all([inbox.get(), Promise.all([todos.get(), events.get()])]);
+    const seen = new Set([...staged.docs, ...done.flatMap((q) => q.docs)].map((d) => d.data().src).filter(Boolean));
+    const batch = db.batch();
+    const added = [], skipped = [];
+    for (const it of items) {
+      const src = `${source}:${it.ref || `${it.title}|${it.due || it.date || ""}`}`;
+      if (seen.has(src)) { skipped.push(it.title); continue; }
+      seen.add(src);
+      const x = { id: uid(), source, kind: it.kind, title: it.title.trim(), tag: it.tag?.trim() || "", from: it.from?.trim() || "", note: "", src, createdAt: new Date().toISOString() };
+      if (it.kind === "todo") x.due = it.due ? normDue(it.due) : "";
+      else {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(it.date || "") || !/^\d{2}:\d{2}$/.test(it.start || "")) throw new Error(`Event "${it.title}" needs date YYYY-MM-DD and start HH:MM.`);
+        Object.assign(x, { date: it.date, start: it.start, end: it.end || "" });
+      }
+      batch.set(inbox.doc(x.id), { ...x, updatedAt: FieldValue.serverTimestamp() });
+      added.push(x);
+    }
+    if (added.length) await batch.commit();
+    return text(`Staged ${added.length} item(s) for the user to review on the website (📥 bar on the home page).`
+      + (skipped.length ? `\nSkipped ${skipped.length} already staged/imported: ${skipped.join(", ")}` : ""));
   }
 );
 
