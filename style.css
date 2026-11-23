@@ -698,3 +698,7 @@ body.todo-dragging, body.todo-dragging * { cursor: grabbing !important; user-sel
 .todo-chip.over { opacity: .55; }
 #weekStrip .wday.drop-hover { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .dc-todo { margin-right: 3px; }
+#todoCard.drop-back { outline: 2.5px dashed var(--accent); outline-offset: -6px; position: relative; }
+#todoCard.drop-back::after { content: attr(data-drop-msg); position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 6;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 999px; box-shadow: 0 6px 16px rgba(0,0,0,.15); pointer-events: none; }
+.dc-ev.leaving { opacity: .4; }

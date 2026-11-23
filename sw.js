@@ -1,9 +1,9 @@
 // Service worker: lets the planner open offline once it has been visited.
 // Own files: network first (so updates show up), cache as fallback.
 // Firebase SDK (versioned URLs on gstatic): cache first.
-const CACHE = "planner-v14";
+const CACHE = "planner-v15";
 const SHELL = [
-  "./", "index.html", "style.css?v=14", "app.js?v=14", "daycal.js?v=14", "lists.js?v=14", "goals.js?v=14", "month.js?v=14", "import.js?v=14", "cloud.js?v=14", "firebase-config.js",
+  "./", "index.html", "style.css?v=15", "app.js?v=15", "daycal.js?v=15", "lists.js?v=15", "goals.js?v=15", "month.js?v=15", "import.js?v=15", "cloud.js?v=15", "firebase-config.js",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
 ];
 

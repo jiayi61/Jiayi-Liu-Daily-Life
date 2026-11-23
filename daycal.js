@@ -289,6 +289,16 @@
       g.textContent = fmtRange(drag.lo, drag.hi);
       return;
     }
+    // a one-off block dragged out over the to-do card goes back to the list
+    if (drag.mode === "move") {
+      const card = document.elementFromPoint(e.clientX, e.clientY)?.closest("#todoCard");
+      const once = !drag.ev.repeat || drag.ev.repeat === "once";
+      drag.back = !!card && once;
+      $("#todoCard").classList.toggle("drop-back", drag.back);
+      $("#todoCard").dataset.dropMsg = drag.ev.todo ? "松手放回「还没安排」" : "松手变成一条待办";
+      drag.el.classList.toggle("leaving", !!card);
+      if (card) { if (e.clientY < 50) scrollBy(0, -16); else if (e.clientY > innerHeight - 50) scrollBy(0, 16); return; }
+    }
     let ns = drag.s, ne = drag.e;
     if (drag.mode === "move") { const len = drag.e - drag.s; ns = Math.max(DAY_START, Math.min(END - len, drag.s + dm)); ne = ns + len; }
     else ne = Math.max(drag.s + SNAP, Math.min(END, drag.e + dm));
@@ -298,15 +308,18 @@
     drag.el.querySelector(".dc-time").textContent = fmtRange(ns, ne);
     // keep the dragged block in view
     const sc = box.querySelector(".dc-scroll"), r = sc.getBoundingClientRect();
-    if (e.clientY < r.top + 30) sc.scrollTop -= 12; else if (e.clientY > r.bottom - 30) sc.scrollTop += 12;
+    if (e.clientY < r.top - 20 || e.clientY > r.bottom + 20) { if (e.clientY < 50) scrollBy(0, -16); else if (e.clientY > innerHeight - 50) scrollBy(0, 16); } // outside: scroll the page (phones)
+    else if (e.clientY < r.top + 30) sc.scrollTop -= 12; else if (e.clientY > r.bottom - 30) sc.scrollTop += 12;
   });
 
   const endDrag = async (e, cancelled) => {
     if (!drag || e.pointerId !== drag.id) return;
     const d = drag; drag = null;
     clearTimeout(d.timer);
-    d.el?.classList.remove("dragging");
+    d.el?.classList.remove("dragging", "leaving");
+    $("#todoCard").classList.remove("drop-back");
     if (cancelled) { renderDay(P.selected()); return; }
+    if (d.back) { backToList(d.ev); return; }
     if (d.mode === "create") {
       box.querySelector(".dc-ghost")?.remove();
       if (d.active) eventDialog(null, { s: d.lo, e: d.hi });
@@ -344,6 +357,26 @@
       else return;
     } else Object.assign(cur, times);
     P.commit();
+  }
+
+  // block dropped on the to-do card: a booked to-do goes back to "还没安排"; any other one-off block becomes a to-do
+  function backToList(ev) {
+    const st = P.get();
+    const i = st.events.findIndex((x) => x.id === ev.id); if (i < 0) return;
+    const [gone] = st.events.splice(i, 1);
+    const linked = gone.todo && st.todos.find((t) => t.id === gone.todo && !t.deletedAt);
+    let made = null;
+    if (!linked) {
+      made = { id: uid(), title: gone.title, due: "", prio: 1, tag: catOf(gone).id ? catOf(gone).label : "", ...(gone.note ? { note: gone.note } : {}),
+        done: false, doneAt: null, createdAt: new Date().toISOString() };
+      st.todos.push(made);
+    }
+    pendingRender = false;
+    P.commit();
+    P.toast(linked ? `「${gone.title}」放回了还没安排` : `「${gone.title}」变成了待办`, () => {
+      P.get().events.push(gone);
+      if (made) { const j = P.get().todos.findIndex((t) => t.id === made.id); if (j >= 0) P.get().todos.splice(j, 1); }
+    });
   }
 
   /* ================= drag a to-do onto the calendar ================= */
