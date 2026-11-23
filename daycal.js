@@ -151,6 +151,62 @@
     eventDialog(null, { s, e: s + 60 });
   };
 
+  /* ================= a card that lifts off and flies between the list and the calendar ================= */
+  const Float = (() => {
+    let el = null, w = 0, h = 0, rx = 0, ry = 0, px = 0, py = 0, x = 0, y = 0, vx = 0, raf = 0;
+    const tick = () => { // trails the pointer a little and leans into the motion
+      const tx = px - rx * w, ty = py - ry * h, nx = x + (tx - x) * 0.4;
+      vx = vx * 0.75 + (nx - x) * 0.25; x = nx; y += (ty - y) * 0.4;
+      el.style.transform = `translate(${x}px, ${y}px) rotate(${Math.max(-6, Math.min(6, vx * 0.5))}deg) scale(1.03)`;
+      raf = requestAnimationFrame(tick);
+    };
+    return {
+      get on() { return !!el; },
+      lift(html, rect, shape, color, e) {
+        el = document.createElement("div");
+        el.className = `floater ${shape}`; el.dataset.shape = shape; el.innerHTML = html; el.style.setProperty("--c", color);
+        w = rect.width; h = rect.height; el.style.width = `${w}px`; el.style.height = `${h}px`;
+        rx = Math.min(1, Math.max(0, (e.clientX - rect.left) / w)); ry = Math.min(1, Math.max(0, (e.clientY - rect.top) / h));
+        px = e.clientX; py = e.clientY; x = rect.left; y = rect.top; vx = 0;
+        el.style.transform = `translate(${x}px, ${y}px)`;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => el?.classList.add("up"));
+        raf = requestAnimationFrame(tick);
+        navigator.vibrate?.(8);
+      },
+      follow(e) { px = e.clientX; py = e.clientY; },
+      shape(shape, sw, sh) {
+        if (!el || (el.dataset.shape === shape && Math.abs(sh - h) < 1)) return;
+        el.dataset.shape = shape; el.classList.remove("as-ev", "as-todo"); el.classList.add(shape);
+        w = sw; h = sh; el.style.width = `${w}px`; el.style.height = `${h}px`;
+      },
+      // glide into place (or back where it came from), then hand over to the real element
+      land(target, done) {
+        if (!el) { done?.(); return; }
+        cancelAnimationFrame(raf);
+        const f = el; el = null;
+        const r = target?.getBoundingClientRect();
+        let fin = false; const end = () => { if (fin) return; fin = true; f.remove(); done?.(); };
+        if (!r || r.bottom < 0 || r.top > innerHeight || !r.width) { f.classList.add("poof"); setTimeout(end, 180); return; }
+        f.classList.add("landing"); f.classList.remove("up");
+        f.style.width = `${r.width}px`; f.style.height = `${r.height}px`;
+        f.style.transform = `translate(${r.left}px, ${r.top}px)`;
+        f.addEventListener("transitionend", (ev) => { if (ev.propertyName === "transform") end(); });
+        setTimeout(end, 420);
+      },
+    };
+  })();
+  const evHtml = (title, time) => `<span class="fl-dot"></span><div class="fl-body"><div class="fl-t">${esc(title)}</div><div class="fl-m">${time}</div></div>`;
+  const listShape = () => { const r = $("#todoGroups").getBoundingClientRect(); return [Math.min(Math.max(r.width - 20, 220), 340), 42]; };
+  const settle = (el) => { if (!el) return; el.classList.remove("arriving"); el.classList.add("landed"); setTimeout(() => el.classList.remove("landed"), 700); };
+  // the spot in "还没安排" where a block dropped from the calendar will go
+  function dropSlot(on, label) {
+    let sl = $("#todoGroups .drop-slot");
+    if (!on) { sl?.remove(); return; }
+    if (!sl) { sl = document.createElement("div"); sl.className = "drop-slot"; $("#todoGroups .sect")?.after(sl); }
+    sl.textContent = label;
+  }
+
   /* ================= day grid ================= */
   const H = 48;                       // px per hour
   const PX = H / 60;                  // px per minute
@@ -289,15 +345,32 @@
       g.textContent = fmtRange(drag.lo, drag.hi);
       return;
     }
-    // a one-off block dragged out over the to-do card goes back to the list
-    if (drag.mode === "move") {
-      const card = document.elementFromPoint(e.clientX, e.clientY)?.closest("#todoCard");
-      const once = !drag.ev.repeat || drag.ev.repeat === "once";
-      drag.back = !!card && once;
-      $("#todoCard").classList.toggle("drop-back", drag.back);
-      $("#todoCard").dataset.dropMsg = drag.ev.todo ? "松手放回「还没安排」" : "松手变成一条待办";
-      drag.el.classList.toggle("leaving", !!card);
-      if (card) { if (e.clientY < 50) scrollBy(0, -16); else if (e.clientY > innerHeight - 50) scrollBy(0, 16); return; }
+    // a one-off block pulled out of the calendar lifts off; over the to-do card it turns into a to-do
+    if (drag.mode === "move" && (!drag.ev.repeat || drag.ev.repeat === "once")) {
+      const r = box.querySelector(".dc-scroll").getBoundingClientRect();
+      const out = e.clientX < r.left - 10 || e.clientX > r.right + 10 || e.clientY < r.top - 24 || e.clientY > r.bottom + 24;
+      if (out) {
+        if (!Float.on) {
+          const er = drag.el.getBoundingClientRect();
+          Float.lift(evHtml(drag.ev.title, drag.el.querySelector(".dc-time").textContent), er, "as-ev", catOf(drag.ev).color, e);
+          drag.el.classList.add("lifted");
+          if (drag.ev.todo) $(`#todoGroups .todo[data-id="${drag.ev.todo}"]`)?.classList.add("drag-src");
+        }
+        Float.follow(e);
+        const card = !!document.elementFromPoint(e.clientX, e.clientY)?.closest("#todoCard");
+        drag.back = card;
+        if (card) Float.shape("as-todo", ...listShape()); else { const er = drag.el.getBoundingClientRect(); Float.shape("as-ev", er.width, er.height); }
+        $("#todoCard").classList.toggle("drop-back", card);
+        dropSlot(card, drag.ev.todo ? "放回「还没安排」" : "变成一条待办");
+        if (e.clientY < 50) scrollBy(0, -16); else if (e.clientY > innerHeight - 50) scrollBy(0, 16);
+        return;
+      }
+      if (Float.on) { // came back in: settle into the calendar again
+        const el = drag.el; drag.back = false;
+        $("#todoCard").classList.remove("drop-back"); dropSlot(false);
+        Float.land(el, () => el.classList.remove("lifted"));
+        $("#todoGroups .todo.drag-src")?.classList.remove("drag-src");
+      }
     }
     let ns = drag.s, ne = drag.e;
     if (drag.mode === "move") { const len = drag.e - drag.s; ns = Math.max(DAY_START, Math.min(END - len, drag.s + dm)); ne = ns + len; }
@@ -316,10 +389,18 @@
     if (!drag || e.pointerId !== drag.id) return;
     const d = drag; drag = null;
     clearTimeout(d.timer);
-    d.el?.classList.remove("dragging", "leaving");
-    $("#todoCard").classList.remove("drop-back");
+    d.el?.classList.remove("dragging");
+    $("#todoCard").classList.remove("drop-back"); dropSlot(false);
+    if (d.back) d.back = !!document.elementFromPoint(e.clientX, e.clientY)?.closest("#todoCard"); // where it was actually let go
+    if (d.back && !cancelled) {
+      const id = backToList(d.ev);
+      const row = id && $(`#todoGroups .todo[data-id="${id}"]`);
+      row?.classList.add("arriving");
+      Float.land(row, () => settle(row));
+      return;
+    }
+    if (Float.on) { const el = d.el; Float.land(el, () => { el.classList.remove("lifted"); $("#todoGroups .todo.drag-src")?.classList.remove("drag-src"); renderDay(P.selected()); }); return; }
     if (cancelled) { renderDay(P.selected()); return; }
-    if (d.back) { backToList(d.ev); return; }
     if (d.mode === "create") {
       box.querySelector(".dc-ghost")?.remove();
       if (d.active) eventDialog(null, { s: d.lo, e: d.hi });
@@ -377,6 +458,7 @@
       P.get().events.push(gone);
       if (made) { const j = P.get().todos.findIndex((t) => t.id === made.id); if (j >= 0) P.get().todos.splice(j, 1); }
     });
+    return linked ? linked.id : made.id;
   }
 
   /* ================= drag a to-do onto the calendar ================= */
@@ -399,12 +481,15 @@
     td.active = true;
     td.src.classList.add("drag-src");
     document.body.classList.add("todo-dragging");
-    const c = document.createElement("div");
-    c.className = "todo-chip";
-    c.textContent = `🎯 ${td.t.title}`;
-    document.body.appendChild(c);
-    td.chip = c;
+    td.color = catForTodo(td.t).color;
+    const r = td.src.getBoundingClientRect();
+    Float.lift(evHtml(td.t.title, ""), { left: r.left, top: r.top, width: r.width, height: Math.min(r.height, 60) }, "as-todo", td.color, e);
     move(e);
+  }
+
+  function catForTodo(t) { // the schedule tag named like the to-do's tag, else the first one
+    const tag = (t.tag || "").replace(/[\s_-]/g, "").toLowerCase();
+    return (tag && cats().find((x) => x.label.replace(/[\s_-]/g, "").toLowerCase() === tag)) || cats()[0] || NONE;
   }
 
   function lenFor() { // keep the length of an earlier slot for this to-do, else 1 hour
@@ -413,7 +498,7 @@
   }
 
   function move(e) {
-    td.chip.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 10}px)`;
+    Float.follow(e);
     const under = document.elementFromPoint(e.clientX, e.clientY);
     // hover a day in the week strip for a moment → go to that day
     const wd = under?.closest?.("#weekStrip [data-day]");
@@ -431,13 +516,19 @@
       const len = lenFor();
       const m = Math.max(DAY_START, Math.min(END - len, snap(minuteAt(e.clientY) - 15)));
       td.minute = m; td.len = len;
-      if (!g) { g = document.createElement("div"); g.className = "dc-ghost"; grid.querySelector(".dc-lane").appendChild(g); }
+      if (!g) { g = document.createElement("div"); g.className = "dc-ghost solid"; g.style.setProperty("--c", td.color); grid.querySelector(".dc-lane").appendChild(g); }
       g.style.top = `${(m - DAY_START) * PX}px`; g.style.height = `${len * PX}px`;
-      g.textContent = `${fmtRange(m, m + len)}  ${td.t.title}`;
+      g.textContent = fmtRange(m, m + len);
+      const lw = grid.querySelector(".dc-lane").getBoundingClientRect().width;
+      Float.shape("as-ev", Math.min(lw * 0.8, 260), Math.max(len * PX - 2, 30));
+      document.querySelector(".floater .fl-m").textContent = fmtRange(m, m + len);
       // scroll the calendar when near its top / bottom
       if (e.clientY < r.top + 36) sc.scrollTop -= 14; else if (e.clientY > r.bottom - 36) sc.scrollTop += 14;
-    } else { td.minute = null; g?.remove(); }
-    td.chip.classList.toggle("over", !!inCal);
+    } else {
+      td.minute = null; g?.remove();
+      const r2 = td.src.isConnected ? td.src.getBoundingClientRect() : null;
+      Float.shape("as-todo", r2?.width || listShape()[0], Math.min(r2?.height || 42, 60));
+    }
     // phones: the calendar is above the list, so scroll the page near the screen edges
     if (e.clientY < 50) scrollBy(0, -16); else if (e.clientY > innerHeight - 50) scrollBy(0, 16);
   }
@@ -462,14 +553,19 @@
     const d = td; td = null;
     clearTimeout(d.timer);
     if (!d.active) return;
-    d.chip.remove();
-    d.src.classList.remove("drag-src");
     document.body.classList.remove("todo-dragging");
     document.querySelectorAll("#weekStrip .drop-hover").forEach((b) => b.classList.remove("drop-hover"));
     box.querySelector(".dc-ghost")?.remove();
     droppedAt = Date.now(); // swallow the click that follows the drop
-    if (cancelled || d.minute == null) return;
-    book(d.t, d.minute, d.minute + d.len);
+    if (cancelled || d.minute == null) { // fly back to the list
+      const src = $(`#todoGroups .todo[data-id="${d.t.id}"]`);
+      Float.land(src, () => { d.src.classList.remove("drag-src"); src?.classList.remove("drag-src"); });
+      return;
+    }
+    const id = book(d.t, d.minute, d.minute + d.len);
+    const block = box.querySelector(`.dc-ev[data-id="${id}"]`);
+    block?.classList.add("arriving");
+    Float.land(block, () => settle(block));
   }
   window.addEventListener("pointerup", (e) => finish(e, false));
   window.addEventListener("pointercancel", (e) => finish(e, true));
@@ -477,8 +573,7 @@
   // put the to-do on the selected day; a to-do that already has a future one-off slot gets that slot moved
   function book(t, s, e) {
     const st = P.get(), day = P.selected();
-    const tag = (t.tag || "").replace(/[\s_-]/g, "").toLowerCase();
-    const c = (tag && cats().find((x) => x.label.replace(/[\s_-]/g, "").toLowerCase() === tag)) || cats()[0] || NONE;
+    const c = catForTodo(t);
     const sl = P.util.slotOf(t);
     const times = { date: day, start: hm(s), end: hm(e) };
     let ev;
@@ -493,6 +588,7 @@
       if (sl && cur === sl.ev) Object.assign(cur, { date: sl.day, start: sl.ev.start, end: sl.ev.end });
       else P.get().events.splice(P.get().events.indexOf(cur), 1);
     });
+    return ev.id;
   }
 
   /* ================= weekly time ================= */
