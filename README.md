@@ -15,6 +15,7 @@
 - **备份 / 恢复**：随时导出、导入 JSON 文件。
 - **🌙 月度回顾**：像年度总结一样看自己的一个月：时间花在哪个标签、作息是早起鸟还是夜猫子、最充实的一天、按时完成率、长期目标推进了多少、心情分布（以及哪些事让你心情更好）、写下的话和这个月的清单。还可以一键复制给 AI 写一份「月度画像」，粘贴回来存在当月。每月头一周首页会提醒你看上个月的回顾。
 - **📥 一键导入**：从 Canvas（上传日历 .ics 文件，或设置订阅链接后「一键刷新」，见 [proxy/README.md](proxy/README.md)）、Apple 日历（Mac「日历」App 导出 .ics，或 iCloud 公开日历链接一键刷新；每周重复的课会变成重复日程，到学期末自动结束）、Gmail（由 Claude 读邮件，找到的 ddl 先放进「待导入」，首页出现提示条）或任何日历的 .ics 文件导入。导入前会弹出列表，可以勾掉不想要的；导入过的不会重复导入，像是手动加过的默认不勾选。
+- **🗂 拖进日历**：短期目标分成「还没安排」和「已安排」两组。按住一项（手机上长按）拖到日历上就排好了时间，拖到上方某一天停一下会切到那天；已安排的再拖一次就是改时间。日历上的这一格和待办一起打勾；安排的那天过了还没做完，会回到「还没安排」。
 - **📦 每周回顾**：一键复制这一周的日程、待办、笔记和心情，粘贴给任意 AI（DeepSeek、豆包、ChatGPT…）聊 5 分钟；再把 AI 的回复粘贴回来，自动识别里面的清单行，勾选确认后加入。
 - **📚 清单（侧栏）**：电影、书、餐厅、礼物、城市，也可以自己新建清单。可以手动添加，也可以从每周回顾导入。
 - **垃圾箱**：删除的日程和待办先进垃圾箱，30 天内可恢复；删除后还能立刻点「撤销」。
@@ -63,7 +64,7 @@
 Firestore 中每一项单独一个文档：
 ```
 users/{uid}/todos/{id}    title, due(可为空), dueAt(时间戳，有截止时才有), prio, tag, subs[{id,title,done}], goal(长期目标 id), src?(导入来源，如 canvas:…), note?, done, doneAt, createdAt
-users/{uid}/events/{id}   title, start, end, note, cat(标签 id), color, repeat, date, until?(重复到哪天为止), skip[], doneOn[], src?(导入来源)
+users/{uid}/events/{id}   title, start, end, note, cat(标签 id), color, repeat, date, until?(重复到哪天为止), skip[], doneOn[], src?(导入来源), todo?(从短期目标拖进来时，对应的 to-do id)
 users/{uid}/days/{日期}    note, mood
 users/{uid}/lists/{id}     type, name, date, note, city?, person?, occasion?, createdAt
 users/{uid}/listTypes/{id} label, icon（自己新建的清单）

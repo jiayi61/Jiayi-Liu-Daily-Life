@@ -75,6 +75,32 @@
   const dueDay = (t) => (t.due || "").slice(0, 10);
   const isLate = (t, now = Date.now()) => !!t.due && !t.done && dueDate(t) < now;
 
+  /* ---------- scheduled to-dos: an event with ev.todo = to-do id puts it on the calendar ---------- */
+  const slotEndAt = (ev, day) => { const d = parseYmd(day); d.setMinutes(evEnd(ev) ?? lmin(ev.start) + 30); return d; };
+  // → { ev, day, past } for the next time slot booked for this to-do, or the latest past one, or null
+  function slotOf(t) {
+    const evs = liveEvents().filter((e) => e.todo === t.id);
+    if (!evs.length) return null;
+    const today = todayStr();
+    let next = null, last = null;
+    for (const ev of evs) {
+      if (ev.repeat && ev.repeat !== "once") {
+        for (let i = 0; i < 8; i++) { const d = addDays(today, i); if (occursOn(ev, d)) { if (!next || d + ev.start < next.day + next.ev.start) next = { ev, day: d }; break; } }
+        continue;
+      }
+      const end = slotEndAt(ev, ev.date);
+      // a slot counts as passed only once its day is over
+      if (ev.date >= today) { if (!next || ev.date + ev.start < next.day + next.ev.start) next = { ev, day: ev.date }; }
+      else if (!last || end > last.end) last = { ev, day: ev.date, end };
+    }
+    return next ? { ...next, past: false } : last ? { ev: last.ev, day: last.day, past: true } : null;
+  }
+  function fmtSlot(sl) {
+    const today = todayStr(), d = parseYmd(sl.day);
+    const label = sl.day === today ? "今天" : sl.day === addDays(today, 1) ? "明天" : sl.day === addDays(today, -1) ? "昨天" : `${d.getMonth() + 1}/${d.getDate()} ${WEEK[d.getDay()]}`;
+    return `${label} ${sl.ev.start}${sl.ev.end ? `–${sl.ev.end}` : ""}`;
+  }
+
   function leftText(t) {
     if (!t.due) return null;
     let diff = dueDate(t) - Date.now();
@@ -173,12 +199,14 @@
     const left = t.done ? null : leftText(t);
     const p = progress(t);
     const g = goalOf(t);
+    const sl = t.done ? null : slotOf(t);
     return `<li class="todo ${t.done ? "is-done" : ""}" data-id="${t.id}">
       <input type="checkbox" class="chk" data-todo-done="${t.id}" ${t.done ? "checked" : ""} aria-label="完成" />
       <span class="prio p${t.prio}"></span>
       <div class="txt">
         <div class="ttl">${esc(t.title)}</div>
         <div class="meta">
+          ${sl ? `<span class="slot ${sl.past ? "old" : ""}" data-goto-day="${sl.day}" title="${sl.past ? "安排的时间过了还没完成，可以再拖到日历上" : "点一下跳到那天"}">📅 ${sl.past ? "上次安排 " : ""}${fmtSlot(sl)}</span>` : ""}
           ${t.due ? `<span class="due">⏰ ${fmtDue(t)}</span>` : ""}
           ${left ? `<span class="left ${left.cls}">${left.text}</span>` : ""}
           ${t.tag ? `<span class="tag"># ${esc(t.tag)}</span>` : ""}
@@ -196,7 +224,11 @@
   function renderTodos() {
     const now = Date.now();
     const byDue = (a, b) => dueDate(a) - dueDate(b) || b.prio - a.prio;
-    const open = liveTodos().filter((t) => !t.done);
+    const openAll = liveTodos().filter((t) => !t.done);
+    const slots = new Map(openAll.map((t) => [t.id, slotOf(t)]));
+    const booked = openAll.filter((t) => slots.get(t.id) && !slots.get(t.id).past)
+      .sort((a, b) => { const x = slots.get(a.id), y = slots.get(b.id); return (x.day + String(lmin(x.ev.start)).padStart(4, "0")).localeCompare(y.day + String(lmin(y.ev.start)).padStart(4, "0")); });
+    const open = openAll.filter((t) => !booked.includes(t)); // "还没安排" (incl. slots that already passed)
     const dated = open.filter((t) => t.due);
     const over = dated.filter((t) => dueDate(t) < now).sort(byDue);
     const onDay = dated.filter((t) => dueDay(t) === selected && dueDate(t) >= now).sort(byDue);
@@ -206,27 +238,36 @@
       .filter((t) => t.done && ((t.doneAt || "").slice(0, 10) === selected || dueDay(t) === selected))
       .sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
 
-    const groups = filter === "day"
+    const unGroups = filter === "day"
       ? [
           ["over", "⚠️ 逾期（当天）", over.filter((t) => dueDay(t) === selected)],
           ["today", "📌 当天截止", onDay],
-          ["done", "✔️ 已完成", done.filter((t) => dueDay(t) === selected)],
         ]
       : [
           ["over", "⚠️ 已逾期", over],
           ["today", selected === todayStr() ? "📌 今天截止" : "📌 当天截止", onDay],
           ["later", "🗓 即将到来", later],
           ["someday", "📝 没有截止日期", someday],
-          ["done", "✔️ 当天完成", done],
         ];
+    const bookedShown = filter === "day" ? booked.filter((t) => slots.get(t.id).day === selected || dueDay(t) === selected) : booked;
+    const unN = unGroups.reduce((a, g) => a + g[2].length, 0);
+    const touch = !matchMedia("(hover: hover)").matches;
+    const groups = [
+      ["sect", `🗂 还没安排 <span class="n">${unN}</span>`, unN ? `${touch ? "长按" : "按住"}一项拖到日历上，就安排好了时间` : "都安排好了 👏"],
+      ...unGroups,
+      ["sect booked-sect", `📅 已安排 <span class="n">${bookedShown.length}</span>`, bookedShown.length ? "" : "还没有安排进日历的事"],
+      ["booked", "", bookedShown],
+      ["done", filter === "day" ? "✔️ 已完成" : "✔️ 当天完成", filter === "day" ? done.filter((t) => dueDay(t) === selected) : done],
+    ];
 
     let html = "", count = 0;
     for (const [cls, label, items] of groups) {
+      if (cls.startsWith("sect")) { html += `<div class="${cls}"><div class="sect-h">${label}</div>${items ? `<p class="sect-hint">${items}</p>` : ""}</div>`; continue; }
       if (!items.length) continue;
       count += items.length;
       const collapsed = cls === "done" && doneCollapsed ? "collapsed" : "";
       html += `<div class="group ${cls} ${collapsed}">
-        <div class="group-h" ${cls === "done" ? 'data-toggle-done="1"' : ""}>${label} <span class="n">${items.length}</span>${cls === "done" ? (doneCollapsed ? " ▸" : " ▾") : ""}</div>
+        ${label ? `<div class="group-h" ${cls === "done" ? 'data-toggle-done="1"' : ""}>${label} <span class="n">${items.length}</span>${cls === "done" ? (doneCollapsed ? " ▸" : " ▾") : ""}</div>` : ""}
         <ul>${items.map(todoItem).join("")}</ul></div>`;
     }
     const typing = document.activeElement?.dataset?.subInput ? document.activeElement.value : null;
@@ -332,6 +373,14 @@
   }
 
   /* ---------- events ---------- */
+  // a to-do and the one-off calendar slots booked for it are ticked together
+  function markSlotsDone(td) {
+    for (const ev of liveEvents()) {
+      if (ev.todo !== td.id || (ev.repeat && ev.repeat !== "once")) continue;
+      ev.doneOn = td.done ? [...new Set([...(ev.doneOn || []), ev.date])] : (ev.doneOn || []).filter((d) => d !== ev.date);
+    }
+  }
+
   function setDay(day) { selected = day; $("#tDate").dataset.touched = ""; render(); }
 
   $("#prevDay").onclick = () => setDay(addDays(selected, -1));
@@ -379,10 +428,13 @@
       // doneAt is stored as the local date-time so it groups by the day you ticked it
       const n = new Date();
       td.doneAt = td.done ? `${ymd(n)}T${pad(n.getHours())}:${pad(n.getMinutes())}` : null;
+      markSlotsDone(td);
       save();
       const li = t.closest(".todo");
       li.classList.add("pop");
       setTimeout(render, 280);
+    } else if (t.dataset.gotoDay) {
+      setDay(t.dataset.gotoDay);
     } else if (t.dataset.subNew) {
       addingSubFor = t.dataset.subNew; renderTodos();
     } else if (t.dataset.subDone) {
@@ -630,13 +682,14 @@
     deleteEvent: (ev) => deleteEvent(ev),
     renderHooks: [],
     selected: () => selected,
+    setDay: (d) => setDay(d),
     profile: () => profile,
     setProfile(p) { profile = p; render(); },
     saveProfile(patch) {
       profile = { ...(profile || {}), ...patch };
       if (window.PlannerCloud?.saveProfile) window.PlannerCloud.saveProfile(patch); else render();
     },
-    util: { liveGoals, leftText, fmtDue, DAY_START, lmin, evEnd, toMin, MOODS, esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay },
+    util: { liveGoals, leftText, fmtDue, DAY_START, lmin, evEnd, toMin, MOODS, esc, pad, ymd, parseYmd, addDays, uid, todayStr, WEEK, REPEAT_LABEL, eventsOn, isEventDone, liveTodos, dueDay, slotOf },
   };
 
   render();

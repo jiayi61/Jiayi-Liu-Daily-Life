@@ -679,3 +679,22 @@ body.goals-open { overflow: hidden; }
 .imp-src details input { padding: 6px 8px; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; }
 .imp-src .imp-proxy { margin-top: 0; padding: 0 4px; }
 .imp-src .hint b { color: var(--ink); font-weight: 600; }
+
+/* ---------- scheduled / not scheduled to-dos, drag onto the calendar ---------- */
+.sect, .booked-sect { margin: 6px 0 8px; }
+.booked-sect { margin-top: 18px; padding-top: 12px; border-top: 1px dashed var(--line, #e4ddd0); }
+.sect-h { font-size: 14px; font-weight: 800; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.sect-h .n { background: var(--paper-2); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.sect-hint { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
+.todo .slot { padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; cursor: pointer; }
+.todo .slot.old { background: var(--paper-2); color: var(--ink-soft); font-weight: 500; }
+@media (hover: hover) { .todo:not(.is-done) { cursor: grab; } .todo:not(.is-done) :is(input, button, .sub-t, .goal-chip, .slot) { cursor: pointer; } }
+.todo:not(.is-done) { -webkit-touch-callout: none; }
+.todo.drag-src { opacity: .45; }
+body.todo-dragging, body.todo-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.todo-chip { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 240px; padding: 6px 10px; border-radius: 8px;
+  background: var(--card, #fff); border: 1.5px solid var(--accent); box-shadow: 0 8px 22px rgba(0,0,0,.18); font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.todo-chip.over { opacity: .55; }
+#weekStrip .wday.drop-hover { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.dc-todo { margin-right: 3px; }

@@ -204,7 +204,7 @@
       html += `<div class="dc-ev ${done ? "done" : ""} ${past ? "past" : ""} ${h < 34 ? "tiny" : ""}" data-id="${ev.id}"
           style="top:${(it.s - DAY_START) * PX}px;height:${h - 2}px;left:calc(${(it.col / it.n) * 100}% + 1px);width:calc(${100 / it.n}% - 3px);--c:${c.color}">
         <input type="checkbox" class="dc-chk" data-done="${ev.id}" ${done ? "checked" : ""} aria-label="完成" />
-        <div class="dc-t">${esc(ev.title)}</div>
+        <div class="dc-t">${ev.todo ? '<span class="dc-todo" title="从短期目标拖进来的">🎯</span>' : ""}${esc(ev.title)}</div>
         <div class="dc-m"><span class="dc-time">${fmtRange(it.s, evEnd(ev))}</span>${ev.note ? ` · ${esc(ev.note)}` : ""}${ev.repeat && ev.repeat !== "once" ? " ↻" : ""}</div>
         <div class="dc-resize"></div>
       </div>`;
@@ -235,6 +235,12 @@
       const ev = P.get().events.find((x) => x.id === chk.dataset.done); if (!ev) return;
       const day = P.selected();
       ev.doneOn = chk.checked ? [...new Set([...(ev.doneOn || []), day])] : (ev.doneOn || []).filter((d) => d !== day);
+      // a slot booked for a to-do: ticking it ticks the to-do too
+      const td = ev.todo && (!ev.repeat || ev.repeat === "once") && P.get().todos.find((t) => t.id === ev.todo && !t.deletedAt);
+      if (td && td.done !== chk.checked) {
+        const n = new Date();
+        td.done = chk.checked; td.doneAt = td.done ? `${ymd(n)}T${pad(n.getHours())}:${pad(n.getMinutes())}` : null;
+      }
       P.commit();
     }
   });
@@ -338,6 +344,122 @@
       else return;
     } else Object.assign(cur, times);
     P.commit();
+  }
+
+  /* ================= drag a to-do onto the calendar ================= */
+  // mouse: press and move; touch: long-press, then move. Hovering a day in the week strip switches to that day.
+  const todoBox = $("#todoGroups");
+  let td = null; // { t, src, x0, y0, id, touch, active, timer, chip, minute, hoverDay, hoverAt }
+  let droppedAt = 0;
+  addEventListener("click", (c) => { if (Date.now() - droppedAt < 250) { c.stopPropagation(); c.preventDefault(); } }, true);
+  const NOGRAB = "input, button, textarea, select, a, .sub-t, .goal-chip, .slot, .subs";
+
+  todoBox.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target.closest(NOGRAB)) return;
+    const li = e.target.closest(".todo"); if (!li || li.classList.contains("is-done")) return;
+    const t = P.get().todos.find((x) => x.id === li.dataset.id); if (!t) return;
+    td = { t, src: li, x0: e.clientX, y0: e.clientY, id: e.pointerId, touch: e.pointerType !== "mouse", active: false };
+    if (td.touch) td.timer = setTimeout(() => { if (td && !td.cancelled) { start(e); navigator.vibrate?.(10); } }, 350);
+  });
+
+  function start(e) {
+    td.active = true;
+    td.src.classList.add("drag-src");
+    document.body.classList.add("todo-dragging");
+    const c = document.createElement("div");
+    c.className = "todo-chip";
+    c.textContent = `🎯 ${td.t.title}`;
+    document.body.appendChild(c);
+    td.chip = c;
+    move(e);
+  }
+
+  function lenFor() { // keep the length of an earlier slot for this to-do, else 1 hour
+    const ev = P.util.slotOf(td.t)?.ev; const e = ev && evEnd(ev);
+    return e ? Math.min(e - lmin(ev.start), 240) : 60;
+  }
+
+  function move(e) {
+    td.chip.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 10}px)`;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    // hover a day in the week strip for a moment → go to that day
+    const wd = under?.closest?.("#weekStrip [data-day]");
+    const d = wd?.dataset.day;
+    if (d !== td.hoverDay) { td.hoverDay = d; td.hoverAt = Date.now(); }
+    else if (d && d !== P.selected() && Date.now() - td.hoverAt > 450) P.setDay(d);
+    document.querySelectorAll("#weekStrip .drop-hover").forEach((b) => b !== wd && b.classList.remove("drop-hover"));
+    wd?.classList.add("drop-hover");
+
+    const grid = box.querySelector(".dc-grid"), sc = box.querySelector(".dc-scroll");
+    const r = sc.getBoundingClientRect();
+    const inCal = under?.closest?.("#dayCal") && e.clientY >= r.top && e.clientY <= r.bottom;
+    let g = box.querySelector(".dc-ghost");
+    if (inCal) {
+      const len = lenFor();
+      const m = Math.max(DAY_START, Math.min(END - len, snap(minuteAt(e.clientY) - 15)));
+      td.minute = m; td.len = len;
+      if (!g) { g = document.createElement("div"); g.className = "dc-ghost"; grid.querySelector(".dc-lane").appendChild(g); }
+      g.style.top = `${(m - DAY_START) * PX}px`; g.style.height = `${len * PX}px`;
+      g.textContent = `${fmtRange(m, m + len)}  ${td.t.title}`;
+      // scroll the calendar when near its top / bottom
+      if (e.clientY < r.top + 36) sc.scrollTop -= 14; else if (e.clientY > r.bottom - 36) sc.scrollTop += 14;
+    } else { td.minute = null; g?.remove(); }
+    td.chip.classList.toggle("over", !!inCal);
+    // phones: the calendar is above the list, so scroll the page near the screen edges
+    if (e.clientY < 50) scrollBy(0, -16); else if (e.clientY > innerHeight - 50) scrollBy(0, 16);
+  }
+
+  window.addEventListener("pointermove", (e) => {
+    if (!td || e.pointerId !== td.id) return;
+    if (!td.active) {
+      const dist = Math.hypot(e.clientX - td.x0, e.clientY - td.y0);
+      if (td.touch) { if (dist > 8) { td.cancelled = true; clearTimeout(td.timer); td = null; } return; }
+      if (dist < 6) return;
+      start(e);
+    }
+    e.preventDefault();
+    move(e);
+  });
+  // once a touch drag has started, stop the page from scrolling under the finger
+  window.addEventListener("touchmove", (e) => { if (td?.active) e.preventDefault(); }, { passive: false });
+  todoBox.addEventListener("contextmenu", (e) => { if (td) e.preventDefault(); });
+
+  function finish(e, cancelled) {
+    if (!td || e.pointerId !== td.id) return;
+    const d = td; td = null;
+    clearTimeout(d.timer);
+    if (!d.active) return;
+    d.chip.remove();
+    d.src.classList.remove("drag-src");
+    document.body.classList.remove("todo-dragging");
+    document.querySelectorAll("#weekStrip .drop-hover").forEach((b) => b.classList.remove("drop-hover"));
+    box.querySelector(".dc-ghost")?.remove();
+    droppedAt = Date.now(); // swallow the click that follows the drop
+    if (cancelled || d.minute == null) return;
+    book(d.t, d.minute, d.minute + d.len);
+  }
+  window.addEventListener("pointerup", (e) => finish(e, false));
+  window.addEventListener("pointercancel", (e) => finish(e, true));
+
+  // put the to-do on the selected day; a to-do that already has a future one-off slot gets that slot moved
+  function book(t, s, e) {
+    const st = P.get(), day = P.selected();
+    const tag = (t.tag || "").replace(/[\s_-]/g, "").toLowerCase();
+    const c = (tag && cats().find((x) => x.label.replace(/[\s_-]/g, "").toLowerCase() === tag)) || cats()[0] || NONE;
+    const sl = P.util.slotOf(t);
+    const times = { date: day, start: hm(s), end: hm(e) };
+    let ev;
+    if (sl && !sl.past && (!sl.ev.repeat || sl.ev.repeat === "once")) { ev = sl.ev; Object.assign(ev, times); }
+    else {
+      ev = { id: uid(), title: t.title, ...times, note: "", repeat: "once", cat: c.id, color: c.color, skip: [], doneOn: [], todo: t.id };
+      st.events.push(ev);
+    }
+    P.commit();
+    P.toast(`已安排「${t.title}」：${fmtRange(s, e)}`, () => {
+      const cur = P.get().events.find((x) => x.id === ev.id); if (!cur) return;
+      if (sl && cur === sl.ev) Object.assign(cur, { date: sl.day, start: sl.ev.start, end: sl.ev.end });
+      else P.get().events.splice(P.get().events.indexOf(cur), 1);
+    });
   }
 
   /* ================= weekly time ================= */
